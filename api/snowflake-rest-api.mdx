@@ -382,6 +382,62 @@ curl -X POST "http://localhost:3000/session?delete=true" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
+## Utility Endpoints
+
+### GET /health
+
+Health check endpoint for monitoring and load balancers.
+
+**Authentication:** Not required
+
+**Response:**
+
+```json
+"OK"
+```
+
+Returns a simple "OK" string when the service is healthy.
+
+**Example:**
+
+```bash
+curl http://localhost:3000/health
+```
+
+**Use Case:**
+
+This endpoint is typically used for:
+- Kubernetes liveness/readiness probes
+- Load balancer health checks
+- Monitoring systems
+- Service discovery
+
+### POST /telemetry/send
+
+Telemetry endpoint for client-side metrics (Snowflake client compatibility).
+
+**Authentication:** Not required
+
+**Request Body:**
+
+Accepts telemetry data from Snowflake clients.
+
+**Response:**
+
+```json
+"OK"
+```
+
+Returns "OK" after receiving telemetry data. Embucket accepts but does not process client telemetry.
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:3000/telemetry/send \
+  -H "Content-Type: application/json" \
+  -d '{"events": []}'
+```
+
 ## Error Codes
 
 Embucket returns Snowflake-compatible error codes:
