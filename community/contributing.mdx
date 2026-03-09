@@ -1,0 +1,132 @@
+---
+title: Contributing to Embucket
+description: Learn how to contribute to Embucket through bug reports, feature requests, and pull requests
+---
+
+Embucket is a streamlined solution for building and managing an open lakehouse platform based on the Apache Iceberg open table format. This project is designed to be radically simple, focusing on ease of deployment, operation, and maintenance.
+
+When contributing to this repository, please first discuss the change you wish to make via issue, email, or any other method with the owners of this repository before making a change.
+
+<Note>
+Please note we have a [Code of Conduct](/community/code-of-conduct). Please follow it in all your interactions with the project.
+</Note>
+
+We appreciate every contribution, whether it's fixing bugs, improving documentation, or adding new features — your efforts help make this project better for everyone.
+
+## Development Environment Setup
+
+To set up a development environment, please follow these steps:
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Embucket/embucket repository from GitHub:
+    ```bash
+    git clone https://github.com/Embucket/embucket.git
+    cd embucket/
+    ```
+  </Step>
+  
+  <Step title="Build the project">
+    Build the project using Cargo:
+    ```bash
+    cargo build
+    ```
+  </Step>
+</Steps>
+
+For more detailed development setup and coding standards, see the [Development Guide](/community/development).
+
+## Issues and Feature Requests
+
+You've found a bug in the source code, a mistake in the documentation, or maybe you'd like a new feature? You can help us by submitting an issue or even better, a pull request.
+
+Before you create an issue, make sure to search the [issue archive](https://github.com/Embucket/embucket/issues?q=is%3Aissue) — your issue may have already been addressed!
+
+### Creating Quality Bug Reports
+
+Please try to create bug reports that are:
+
+<CardGroup cols={2}>
+  <Card title="Reproducible" icon="rotate">
+    Include steps to reproduce the problem
+  </Card>
+  <Card title="Specific" icon="bullseye">
+    Include as much detail as possible: which version, what environment, etc.
+  </Card>
+  <Card title="Unique" icon="fingerprint">
+    Do not duplicate existing opened issues
+  </Card>
+  <Card title="Scoped" icon="crosshairs">
+    One bug per report
+  </Card>
+</CardGroup>
+
+<Tip>
+Even better: Submit a pull request with a fix or new feature!
+</Tip>
+
+## Pull Request Process
+
+Follow these steps to submit a pull request:
+
+<Steps>
+  <Step title="Search for existing PRs">
+    Search our repository for open or closed [Pull Requests](https://github.com/Embucket/embucket/pulls) that relate to your submission. You don't want to duplicate effort.
+  </Step>
+  
+  <Step title="Fork the project">
+    Create your own fork of the repository on GitHub.
+  </Step>
+  
+  <Step title="Create a feature branch">
+    Create your feature branch with a descriptive name:
+    ```bash
+    git checkout -b issueID/new_feature
+    ```
+  </Step>
+  
+  <Step title="Commit your changes">
+    Commit your changes with a clear message referencing the issue ID:
+    ```bash
+    git commit -m 'issue id: New Feature'
+    ```
+  </Step>
+  
+  <Step title="Push to your branch">
+    Push your changes to your forked repository:
+    ```bash
+    git push origin issueID/new_feature
+    ```
+  </Step>
+  
+  <Step title="Open a Pull Request">
+    [Open a Pull Request](https://github.com/Embucket/embucket/compare?expand=1) on GitHub with a detailed description of your changes.
+  </Step>
+  
+  <Step title="Ensure tests pass">
+    Your pull request build must pass. The build will run automatically when you submit your PR.
+  </Step>
+</Steps>
+
+## Coding Conventions
+
+When coding in Rust, please follow the [coding conventions](/community/development#coding-standards) outlined in our development guide.
+
+<Info>
+Consistent coding style helps maintain code quality and makes it easier for everyone to contribute.
+</Info>
+
+## Getting Help
+
+For discussions, questions, or collaboration, feel free to reach out via:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Discussions" icon="comments" href="https://github.com/Embucket/embucket/discussions">
+    Ask questions and discuss ideas with the community
+  </Card>
+  <Card title="GitHub Issues" icon="bug" href="https://github.com/Embucket/embucket/issues">
+    Report bugs and request features
+  </Card>
+</CardGroup>
+
+We appreciate your contributions and look forward to working with you!

@@ -1,0 +1,257 @@
+---
+title: AWS S3 Table Buckets
+description: Configure Embucket to use AWS S3 Table Buckets as a catalog backend
+---
+
+## Overview
+
+AWS S3 Table Buckets provide a fully managed catalog for Apache Iceberg tables. When you use S3 Tables with Embucket, AWS handles metadata management, indexing, and catalog operations automatically.
+
+<Info>
+S3 Table Buckets are purpose-built for analytics workloads and include features like automatic compaction, metadata caching, and optimized query performance.
+</Info>
+
+## Benefits of S3 Tables
+
+- **Managed Metadata**: AWS handles metadata storage and availability
+- **Automatic Optimization**: Built-in compaction and optimization
+- **Integrated Permissions**: Native IAM integration for access control
+- **High Availability**: AWS-managed infrastructure with multi-AZ support
+- **Performance**: Optimized data layout and metadata caching
+
+## Configuration
+
+### Basic Setup
+
+Define an S3 Tables volume in your `metastore.yaml` configuration:
+
+```yaml
+volumes:
+  - ident: demo
+    type: s3-tables
+    database: demo
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_ACCESS_KEY
+      aws-secret-access-key: YOUR_SECRET_KEY
+    arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+```
+
+### Configuration Parameters
+
+<ParamField path="ident" type="string" required>
+  Unique identifier for this volume. Used to reference the volume in database definitions.
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Must be `s3-tables` for AWS S3 Table Buckets.
+</ParamField>
+
+<ParamField path="database" type="string">
+  Optional database name to create automatically. If provided, Embucket will create a database associated with this volume on startup.
+</ParamField>
+
+<ParamField path="arn" type="string" required>
+  The Amazon Resource Name (ARN) of your S3 Table Bucket. Format: `arn:aws:s3tables:REGION:ACCOUNT_ID:bucket/BUCKET_NAME`
+</ParamField>
+
+<ParamField path="credentials" type="object" required>
+  AWS credentials for accessing the S3 Table Bucket. See [Authentication](#authentication) below.
+</ParamField>
+
+<ParamField path="endpoint" type="string">
+  Custom S3 Tables endpoint URL. Only needed for testing or non-standard AWS configurations.
+</ParamField>
+
+## Authentication
+
+### Access Key Credentials
+
+The most common authentication method uses AWS access keys:
+
+```yaml
+credentials:
+  credential_type: access_key
+  aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+  aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+```
+
+<Warning>
+Never commit credentials directly in configuration files. Use environment variables or AWS IAM roles instead for production deployments.
+</Warning>
+
+### Session Token Support
+
+For temporary credentials or assumed roles, include a session token:
+
+```yaml
+credentials:
+  credential_type: access_key
+  aws-access-key-id: YOUR_ACCESS_KEY
+  aws-secret-access-key: YOUR_SECRET_KEY
+  aws-session-token: YOUR_SESSION_TOKEN
+```
+
+### IAM Permissions Required
+
+Your AWS credentials need the following permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3tables:GetTableBucket",
+        "s3tables:ListTables",
+        "s3tables:GetTable",
+        "s3tables:GetTableMetadataLocation"
+      ],
+      "Resource": "arn:aws:s3tables:REGION:ACCOUNT:bucket/BUCKET_NAME"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::BUCKET_NAME/*"
+    }
+  ]
+}
+```
+
+## Understanding the ARN
+
+The S3 Tables ARN uniquely identifies your table bucket:
+
+```
+arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+         │        │         │          │            └─ Bucket Name
+         │        │         │          └─ AWS Account ID
+         │        │         └─ Region
+         │        └─ Service (s3tables)
+         └─ Partition (aws)
+```
+
+Embucket automatically extracts:
+- **Region**: Used for API endpoint configuration
+- **Account ID**: For IAM permission validation
+- **Bucket Name**: The underlying S3 bucket for data storage
+
+## Example Queries
+
+Once configured, query your S3 Tables catalog using standard SQL:
+
+### List Schemas
+
+```sql
+SHOW SCHEMAS IN demo;
+```
+
+### List Tables in a Schema
+
+```sql
+SHOW TABLES IN demo.tpch_10;
+```
+
+### Query Table Data
+
+```sql
+SELECT 
+  o_orderkey,
+  o_custkey,
+  o_totalprice,
+  o_orderdate
+FROM demo.tpch_10.orders
+WHERE o_orderdate >= '2024-01-01'
+ORDER BY o_totalprice DESC
+LIMIT 10;
+```
+
+### Aggregate Queries
+
+```sql
+SELECT 
+  c_mktsegment,
+  COUNT(*) as customer_count,
+  AVG(c_acctbal) as avg_balance
+FROM demo.tpch_10.customer
+GROUP BY c_mktsegment
+ORDER BY customer_count DESC;
+```
+
+## Docker Deployment
+
+Mount your configuration file when running Embucket in Docker:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 \
+  -v $PWD/config:/app/config \
+  embucket/embucket \
+  ./embucketd --metastore-config config/metastore.yaml
+```
+
+## Complete Example
+
+Here's a full configuration with S3 Tables and a database:
+
+```yaml metastore.yaml
+volumes:
+  - ident: production_catalog
+    type: s3-tables
+    database: analytics
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ${AWS_ACCESS_KEY_ID}
+      aws-secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+    arn: arn:aws:s3tables:us-east-1:123456789012:bucket/prod-tables
+
+databases:
+  - ident: analytics
+    volume: production_catalog
+    should_refresh: true
+
+schemas:
+  - database: analytics
+    schema: public
+  - database: analytics
+    schema: staging
+```
+
+<Note>
+The `should_refresh: true` flag tells Embucket to periodically sync the catalog metadata with S3 Tables to detect new tables or schema changes.
+</Note>
+
+## Troubleshooting
+
+### Connection Issues
+
+If Embucket cannot connect to S3 Tables:
+
+1. Verify your ARN format is correct
+2. Check that IAM credentials have required permissions
+3. Ensure the region in the ARN matches your table bucket's region
+4. Validate network connectivity to AWS S3 Tables endpoints
+
+### Credential Validation
+
+Embucket validates S3 Tables credentials on startup by calling `GetTableBucket`. If this fails, check:
+
+- Access key ID format (20 alphanumeric characters)
+- Secret access key format (40 Base64 characters)
+- IAM policy allows `s3tables:GetTableBucket` action
+- Table bucket exists and ARN is correct
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Query Your Data" icon="database" href="/guides/querying">
+    Learn SQL query syntax
+  </Card>
+  <Card title="Metastore Config" icon="gear" href="/catalogs/metastore-config">
+    Complete configuration reference
+  </Card>
+</CardGroup>

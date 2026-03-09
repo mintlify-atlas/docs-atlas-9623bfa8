@@ -1,0 +1,617 @@
+---
+title: Metastore Configuration Reference
+description: Complete YAML schema documentation for Embucket catalog configuration
+---
+
+## Overview
+
+The metastore configuration file defines how Embucket connects to data storage and organizes catalogs. This file is passed to Embucket at startup:
+
+```bash
+./embucketd --metastore-config config/metastore.yaml
+```
+
+The configuration has four main sections:
+1. **Volumes**: Physical storage backends
+2. **Databases**: Logical catalog groupings
+3. **Schemas**: Namespaces within databases
+4. **Tables**: Individual table registrations
+
+## Configuration Schema
+
+### Top-Level Structure
+
+```yaml
+volumes:
+  - # Volume definitions (required)
+
+databases:
+  - # Database definitions (optional)
+
+schemas:
+  - # Schema definitions (optional)
+
+tables:
+  - # Table registrations (optional)
+```
+
+## Volumes Section
+
+Volumes define the physical storage backends where data resides.
+
+### Common Fields
+
+<ParamField path="ident" type="string" required>
+  Unique identifier for this volume. Referenced by databases and tables.
+  
+  ```yaml
+  ident: production_data
+  ```
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Storage backend type. Valid values:
+  - `s3` - Amazon S3 or S3-compatible storage
+  - `s3-tables` - AWS S3 Table Buckets
+  - `file` - Local filesystem
+  - `memory` - In-memory storage (temporary)
+</ParamField>
+
+<ParamField path="database" type="string">
+  Optional database name to create automatically for this volume. Shorthand for defining a database entry.
+  
+  ```yaml
+  database: analytics
+  ```
+</ParamField>
+
+### S3 Volume Type
+
+For standard Amazon S3 or S3-compatible storage:
+
+```yaml
+volumes:
+  - ident: data_lake
+    type: s3
+    region: us-east-2
+    bucket: my-bucket
+    endpoint: https://s3.amazonaws.com  # Optional
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_KEY
+      aws-secret-access-key: YOUR_SECRET
+      aws-session-token: TOKEN  # Optional, for temporary credentials
+```
+
+<ParamField path="region" type="string">
+  AWS region for the S3 bucket (e.g., `us-east-1`, `eu-west-2`).
+</ParamField>
+
+<ParamField path="bucket" type="string" required>
+  S3 bucket name. Must contain only alphanumeric characters, hyphens, or underscores. Cannot start or end with hyphens or underscores.
+</ParamField>
+
+<ParamField path="endpoint" type="string">
+  Custom S3 endpoint URL. Required for S3-compatible storage (MinIO, Ceph, etc.). Must start with `http://` or `https://`.
+  
+  ```yaml
+  endpoint: https://minio.example.com:9000
+  ```
+</ParamField>
+
+<ParamField path="credentials" type="object">
+  AWS credentials for bucket access. See [Credentials Types](#credential-types) below.
+</ParamField>
+
+### S3 Tables Volume Type
+
+For AWS S3 Table Buckets:
+
+```yaml
+volumes:
+  - ident: managed_catalog
+    type: s3-tables
+    arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+    endpoint: https://s3tables.us-east-2.amazonaws.com  # Optional
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_KEY
+      aws-secret-access-key: YOUR_SECRET
+```
+
+<ParamField path="arn" type="string" required>
+  Amazon Resource Name (ARN) of the S3 Table Bucket. Format:
+  
+  ```
+  arn:aws:s3tables:REGION:ACCOUNT_ID:bucket/BUCKET_NAME
+  ```
+  
+  The ARN must start with `arn:aws:s3tables:` and include a valid region, account ID, and bucket name.
+</ParamField>
+
+<ParamField path="endpoint" type="string">
+  Custom S3 Tables endpoint. Only needed for testing or non-standard AWS configurations.
+</ParamField>
+
+### File Volume Type
+
+For local filesystem storage:
+
+```yaml
+volumes:
+  - ident: local_storage
+    type: file
+    path: /data/lakehouse
+```
+
+<ParamField path="path" type="string" required>
+  Absolute path to the directory where data will be stored. Directory will be created if it doesn't exist.
+</ParamField>
+
+### Memory Volume Type
+
+For temporary in-memory storage:
+
+```yaml
+volumes:
+  - ident: temp_storage
+    type: memory
+```
+
+<Warning>
+Memory volumes are ephemeral. All data is lost when Embucket stops.
+</Warning>
+
+## Credential Types
+
+Credentials authenticate Embucket to cloud storage backends.
+
+### Access Key Credentials
+
+Most common authentication method:
+
+```yaml
+credentials:
+  credential_type: access_key
+  aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+  aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  aws-session-token: SESSION_TOKEN  # Optional
+```
+
+<ParamField path="credential_type" type="string" required>
+  Must be `access_key` for access key authentication.
+</ParamField>
+
+<ParamField path="aws-access-key-id" type="string" required>
+  AWS access key ID. Must be exactly 20 alphanumeric characters.
+</ParamField>
+
+<ParamField path="aws-secret-access-key" type="string" required>
+  AWS secret access key. Must be exactly 40 Base64-like characters (uppercase, lowercase, digits, +/=).
+</ParamField>
+
+<ParamField path="aws-session-token" type="string">
+  Optional session token for temporary credentials from AWS STS or IAM roles.
+</ParamField>
+
+### Token Credentials
+
+For OAuth or other token-based authentication:
+
+```yaml
+credentials:
+  credential_type: token
+  token: YOUR_TOKEN_STRING
+```
+
+<Info>
+Token authentication is less common. Most users should use access key credentials.
+</Info>
+
+## Databases Section
+
+Databases are logical groupings of schemas and tables, associated with a specific volume.
+
+```yaml
+databases:
+  - ident: analytics
+    volume: data_lake
+    should_refresh: true
+  
+  - ident: staging
+    volume: temp_storage
+    should_refresh: false
+```
+
+<ParamField path="ident" type="string" required>
+  Unique database identifier. This is the database name used in SQL queries.
+  
+  ```sql
+  SELECT * FROM analytics.public.customers;
+              -- ^^^^^^^^^ database ident
+  ```
+</ParamField>
+
+<ParamField path="volume" type="string" required>
+  Volume identifier this database is associated with. Must match a `ident` from the `volumes` section.
+</ParamField>
+
+<ParamField path="should_refresh" type="boolean" default="false">
+  If `true`, Embucket periodically refreshes the catalog metadata to discover new tables or schema changes. Useful for S3 Tables catalogs.
+  
+  ```yaml
+  should_refresh: true  # Auto-discover new tables
+  ```
+</ParamField>
+
+## Schemas Section
+
+Schemas provide namespaces within databases for organizing tables.
+
+```yaml
+schemas:
+  - database: analytics
+    schema: public
+  
+  - database: analytics
+    schema: staging
+  
+  - database: staging
+    schema: temporary
+```
+
+<ParamField path="database" type="string" required>
+  Database this schema belongs to. Must match a database `ident`.
+</ParamField>
+
+<ParamField path="schema" type="string" required>
+  Schema name. Used in SQL queries:
+  
+  ```sql
+  SELECT * FROM analytics.staging.temp_table;
+                        -- ^^^^^^^ schema name
+  ```
+</ParamField>
+
+<Note>
+A `public` schema is automatically created for each database if not explicitly defined.
+</Note>
+
+## Tables Section
+
+Explicitly register external Iceberg tables by pointing to their metadata files.
+
+```yaml
+tables:
+  - database: analytics
+    schema: public
+    table: customers
+    metadata_location: s3://my-bucket/warehouse/customers/metadata/00005-abc123.metadata.json
+  
+  - database: analytics
+    schema: public
+    table: orders
+    metadata_location: s3://my-bucket/warehouse/orders/metadata/00003-def456.metadata.json
+```
+
+<ParamField path="database" type="string" required>
+  Database the table belongs to. Must match a database `ident`.
+</ParamField>
+
+<ParamField path="schema" type="string" required>
+  Schema the table belongs to. The schema must be defined in the `schemas` section.
+</ParamField>
+
+<ParamField path="table" type="string" required>
+  Table name as it will appear in queries.
+</ParamField>
+
+<ParamField path="metadata_location" type="string" required>
+  Full S3 URI to the Apache Iceberg metadata JSON file. This file must:
+  - Be in the same bucket as the database's volume
+  - Be accessible with the volume's credentials
+  - Contain valid Iceberg metadata
+  
+  Format: `s3://BUCKET_NAME/path/to/table/metadata/00000-abc123.metadata.json`
+</ParamField>
+
+<Warning>
+**Important**: Tables must be in the same bucket as their database's volume. Cross-bucket table access requires defining additional volumes.
+</Warning>
+
+## Environment Variables
+
+You can reference environment variables in configuration using `${VAR_NAME}` syntax:
+
+```yaml
+volumes:
+  - ident: secure_data
+    type: s3
+    region: us-east-1
+    bucket: ${S3_BUCKET_NAME}
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ${AWS_ACCESS_KEY_ID}
+      aws-secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+```
+
+<Tip>
+Using environment variables keeps sensitive credentials out of configuration files and enables different configurations per environment.
+</Tip>
+
+## Performance Tuning
+
+Configure object store timeouts via environment variables:
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `OBJECT_STORE_TIMEOUT_SECS` | 30 | Overall operation timeout |
+| `OBJECT_STORE_CONNECT_TIMEOUT_SECS` | 3 | Connection timeout |
+| `AWS_SDK_CONNECT_TIMEOUT_SECS` | 3 | AWS SDK connection timeout |
+| `AWS_SDK_OPERATION_TIMEOUT_SECS` | 30 | AWS SDK operation timeout |
+| `AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS` | 10 | AWS SDK retry attempt timeout |
+| `ICEBERG_CREATE_TABLE_TIMEOUT_SECS` | 30 | Table creation timeout |
+| `ICEBERG_CATALOG_TIMEOUT_SECS` | 10 | Catalog operation timeout |
+
+Example:
+
+```bash
+export OBJECT_STORE_TIMEOUT_SECS=60
+export OBJECT_STORE_CONNECT_TIMEOUT_SECS=5
+./embucketd --metastore-config config/metastore.yaml
+```
+
+## Complete Examples
+
+### Multi-Catalog Setup
+
+```yaml
+# Production and staging catalogs
+volumes:
+  - ident: prod_lake
+    type: s3
+    region: us-east-1
+    bucket: production-data
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ${PROD_AWS_KEY}
+      aws-secret-access-key: ${PROD_AWS_SECRET}
+  
+  - ident: staging_lake
+    type: s3
+    region: us-east-1
+    bucket: staging-data
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ${STAGING_AWS_KEY}
+      aws-secret-access-key: ${STAGING_AWS_SECRET}
+
+databases:
+  - ident: production
+    volume: prod_lake
+    should_refresh: false
+  
+  - ident: staging
+    volume: staging_lake
+    should_refresh: true
+
+schemas:
+  - database: production
+    schema: public
+  - database: production
+    schema: analytics
+  - database: staging
+    schema: public
+  - database: staging
+    schema: experimental
+```
+
+### Mixed Storage Types
+
+```yaml
+# S3 Tables + local filesystem
+volumes:
+  - ident: cloud_catalog
+    type: s3-tables
+    database: cloud_data
+    arn: arn:aws:s3tables:us-west-2:123456789012:bucket/prod-tables
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ${AWS_ACCESS_KEY_ID}
+      aws-secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+  
+  - ident: local_dev
+    type: file
+    database: dev_data
+    path: /var/embucket/data
+
+databases:
+  - ident: cloud_data
+    volume: cloud_catalog
+    should_refresh: true
+  
+  - ident: dev_data
+    volume: local_dev
+    should_refresh: false
+
+schemas:
+  - database: cloud_data
+    schema: public
+  - database: dev_data
+    schema: public
+```
+
+### External Iceberg with Multiple Tables
+
+```yaml
+# Complete external table setup
+volumes:
+  - ident: warehouse
+    type: s3
+    region: eu-west-1
+    bucket: iceberg-warehouse
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ${AWS_ACCESS_KEY_ID}
+      aws-secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+
+databases:
+  - ident: analytics
+    volume: warehouse
+
+schemas:
+  - database: analytics
+    schema: sales
+  - database: analytics
+    schema: marketing
+
+tables:
+  # Sales tables
+  - database: analytics
+    schema: sales
+    table: orders
+    metadata_location: s3://iceberg-warehouse/sales/orders/metadata/v5.metadata.json
+  
+  - database: analytics
+    schema: sales
+    table: customers
+    metadata_location: s3://iceberg-warehouse/sales/customers/metadata/v3.metadata.json
+  
+  - database: analytics
+    schema: sales
+    table: products
+    metadata_location: s3://iceberg-warehouse/sales/products/metadata/v2.metadata.json
+  
+  # Marketing tables
+  - database: analytics
+    schema: marketing
+    table: campaigns
+    metadata_location: s3://iceberg-warehouse/marketing/campaigns/metadata/v1.metadata.json
+  
+  - database: analytics
+    schema: marketing
+    table: leads
+    metadata_location: s3://iceberg-warehouse/marketing/leads/metadata/v4.metadata.json
+```
+
+## Best Practices
+
+### Security
+
+1. **Never commit credentials**: Use environment variables or IAM roles
+2. **Principle of least privilege**: Grant only required S3 permissions
+3. **Rotate credentials**: Regularly update access keys
+4. **Use session tokens**: Leverage temporary credentials when possible
+
+### Organization
+
+1. **Consistent naming**: Use clear, descriptive identifiers for volumes and databases
+2. **Schema separation**: Use schemas to separate environments (prod, staging, dev)
+3. **Logical grouping**: Group related tables in the same schema
+4. **Volume per environment**: Separate production and non-production storage
+
+### Performance
+
+1. **Co-locate data**: Keep related tables in the same bucket to minimize latency
+2. **Tune timeouts**: Adjust timeout settings based on your network conditions
+3. **Minimize metadata**: Only register tables you actively query
+4. **Use S3 Tables for discovery**: Enable `should_refresh` for dynamic catalogs
+
+### Maintainability
+
+1. **Document your config**: Add comments explaining non-obvious settings
+2. **Version control**: Track configuration changes in git
+3. **Environment-specific configs**: Maintain separate files per environment
+4. **Validate before deploy**: Test configuration changes in staging first
+
+## Validation Rules
+
+### Volume Validation
+
+- `ident` must be non-empty
+- S3 `bucket` must be alphanumeric with hyphens/underscores only
+- S3 `bucket` cannot start or end with hyphens/underscores
+- `endpoint` must start with `http://` or `https://`
+- S3 Tables `arn` must match format: `arn:aws:s3tables:region:account:bucket/name`
+- Access key ID must be exactly 20 alphanumeric characters
+- Secret access key must be exactly 40 Base64 characters
+
+### Database Validation
+
+- `ident` must be non-empty
+- `volume` must reference an existing volume identifier
+
+### Schema Validation
+
+- `database` must reference an existing database identifier
+- `schema` must be non-empty
+
+### Table Validation
+
+- `database` must reference an existing database
+- `schema` must reference an existing schema
+- `table` must be non-empty
+- `metadata_location` must be a valid S3 URI
+- Metadata file must exist and be accessible
+- Metadata file must be in the same bucket as the database's volume
+
+## Troubleshooting
+
+### Configuration Parse Errors
+
+**Symptom**: `Failed to parse metastore config`
+
+**Solutions**:
+- Validate YAML syntax (indentation, colons, dashes)
+- Check for typos in field names
+- Ensure required fields are present
+- Verify credential format matches exactly
+
+### Volume Connection Failures
+
+**Symptom**: `Failed to validate credentials` or `ObjectStore error`
+
+**Solutions**:
+- Verify credentials have correct permissions
+- Check network connectivity to S3/storage endpoint
+- Validate bucket/ARN exists and is spelled correctly
+- Ensure region matches bucket location
+- Test credentials with AWS CLI: `aws s3 ls s3://bucket-name`
+
+### Table Registration Errors
+
+**Symptom**: `Invalid metadata location` or `Metadata parse error`
+
+**Solutions**:
+- Verify metadata file exists at specified location
+- Check file is valid Iceberg metadata JSON
+- Ensure table is in same bucket as volume
+- Confirm credentials have read access
+- Validate metadata file isn't corrupted
+
+### Reference Errors
+
+**Symptom**: `Volume not found` or `Database not found`
+
+**Solutions**:
+- Check identifiers match exactly (case-sensitive)
+- Ensure volumes are defined before databases
+- Verify databases are defined before schemas
+- Confirm schemas exist before registering tables
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="S3 Tables Setup" icon="aws" href="/catalogs/s3-tables">
+    Configure AWS S3 Table Buckets
+  </Card>
+  <Card title="External Iceberg" icon="table" href="/catalogs/external-iceberg">
+    Register existing Iceberg tables
+  </Card>
+  <Card title="Deploy Embucket" icon="rocket" href="/deployment/docker">
+    Production deployment guide
+  </Card>
+  <Card title="Write Queries" icon="code" href="/guides/querying">
+    Learn SQL syntax
+  </Card>
+</CardGroup>

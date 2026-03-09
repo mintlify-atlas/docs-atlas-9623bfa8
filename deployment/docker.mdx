@@ -1,0 +1,263 @@
+---
+title: 'Docker Deployment'
+description: 'Run Embucket using Docker for simplified deployment'
+---
+
+## Quick Start
+
+The fastest way to get started with Embucket is using Docker:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 embucket/embucket
+```
+
+This command starts Embucket and exposes the Snowflake-compatible API on port 3000.
+
+## Docker Run Command
+
+### Basic Usage
+
+Run Embucket with default configuration:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 embucket/embucket
+```
+
+### With Configuration File
+
+Mount a configuration file to connect to external catalogs:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 \
+  -v $PWD/config:/app/config \
+  embucket/embucket \
+  ./embucketd --metastore-config config/metastore.yaml
+```
+
+### Custom Port Mapping
+
+Embucket exposes two ports:
+- **3000**: Snowflake-compatible API (default)
+- **8080**: Additional API port
+
+```bash
+docker run --name embucket --rm \
+  -p 3000:3000 \
+  -p 8080:8080 \
+  embucket/embucket
+```
+
+## Docker Compose
+
+For production deployments with dependencies, use Docker Compose. Here's an example with MinIO for object storage:
+
+```yaml
+services:
+  embucket:
+    image: embucket/embucket
+    container_name: embucket
+    depends_on:
+      - minio
+    ports:
+      - 3000:3000
+      - 8080:8080
+    environment:
+      - API_URL=http://localhost:3000
+      - OBJECT_STORE_BACKEND=s3
+      - SLATEDB_PREFIX=data/
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-2
+      - S3_BUCKET=mybucket
+      - S3_ENDPOINT=http://warehouse.minio:9000
+      - S3_ALLOW_HTTP=true
+      - CATALOG_URL=http://embucket:3000/catalog
+    volumes:
+      - ./tmp:/tmp
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - ./warehouse:/warehouse
+    ports:
+      - 9001:9001
+      - 9000:9000
+    command: ["server", "/warehouse", "--console-address", ":9001"]
+```
+
+Start the stack:
+
+```bash
+docker compose up -d
+```
+
+## Environment Variables
+
+### Object Storage Configuration
+
+<ParamField path="OBJECT_STORE_BACKEND" type="string" default="file">
+  Object storage backend type. Options: `file`, `s3`
+</ParamField>
+
+<ParamField path="FILE_STORAGE_PATH" type="string" default="data/">
+  Path for file-based storage
+</ParamField>
+
+<ParamField path="S3_BUCKET" type="string">
+  S3 bucket name when using S3 backend
+</ParamField>
+
+<ParamField path="S3_ENDPOINT" type="string">
+  S3 endpoint URL (for MinIO or custom S3-compatible storage)
+</ParamField>
+
+<ParamField path="S3_ALLOW_HTTP" type="boolean" default="false">
+  Allow HTTP connections to S3 (useful for local MinIO)
+</ParamField>
+
+### AWS Credentials
+
+<ParamField path="AWS_ACCESS_KEY_ID" type="string">
+  AWS access key ID for S3 access
+</ParamField>
+
+<ParamField path="AWS_SECRET_ACCESS_KEY" type="string">
+  AWS secret access key for S3 access
+</ParamField>
+
+<ParamField path="AWS_REGION" type="string" default="us-east-2">
+  AWS region for S3 operations
+</ParamField>
+
+### Server Configuration
+
+<ParamField path="BUCKET_HOST" type="string" default="0.0.0.0">
+  Host address to bind to (0.0.0.0 in Docker)
+</ParamField>
+
+<ParamField path="API_URL" type="string">
+  Public API URL for external access
+</ParamField>
+
+<ParamField path="CATALOG_URL" type="string">
+  Iceberg REST catalog URL
+</ParamField>
+
+<ParamField path="JWT_SECRET" type="string">
+  JWT secret for authentication (change in production)
+</ParamField>
+
+## Volume Mounts
+
+### Configuration Files
+
+Mount your metastore configuration:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 \
+  -v $PWD/config:/app/config \
+  embucket/embucket \
+  ./embucketd --metastore-config config/metastore.yaml
+```
+
+### Data Persistence
+
+For persistent data storage:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 \
+  -v embucket-data:/app/data \
+  embucket/embucket
+```
+
+### Temporary Files
+
+Mount a directory for temporary query processing:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 \
+  -v ./tmp:/tmp \
+  embucket/embucket
+```
+
+## Production Considerations
+
+<CardGroup cols={2}>
+  <Card title="Resource Limits" icon="gauge-high">
+    Set memory and CPU limits for production workloads:
+    ```bash
+    docker run --name embucket --rm \
+      -p 3000:3000 \
+      --memory="4g" \
+      --cpus="2" \
+      embucket/embucket
+    ```
+  </Card>
+
+  <Card title="Health Checks" icon="heart-pulse">
+    Configure health checks in docker-compose.yml:
+    ```yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    ```
+  </Card>
+
+  <Card title="Logging" icon="file-lines">
+    Configure logging drivers:
+    ```bash
+    docker run --name embucket --rm \
+      --log-driver=json-file \
+      --log-opt max-size=10m \
+      --log-opt max-file=3 \
+      embucket/embucket
+    ```
+  </Card>
+
+  <Card title="Security" icon="shield">
+    Run as non-root user (default in Embucket):
+    - Uses distroless base image
+    - Runs as `nonroot:nonroot` user
+    - Change JWT_SECRET in production
+  </Card>
+</CardGroup>
+
+## Building Custom Image
+
+To build your own Embucket Docker image:
+
+```bash
+git clone https://github.com/Embucket/embucket.git
+cd embucket
+docker build -t my-embucket .
+```
+
+### Build Arguments
+
+<ParamField path="ENABLE_EXPERIMENTAL" type="boolean" default="false">
+  Enable experimental features during build
+</ParamField>
+
+```bash
+docker build \
+  --build-arg ENABLE_EXPERIMENTAL=true \
+  -t my-embucket .
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="sliders" href="/deployment/configuration">
+    Learn about all configuration options
+  </Card>
+
+  <Card title="AWS Lambda" icon="aws" href="/deployment/aws-lambda">
+    Deploy Embucket as a serverless function
+  </Card>
+</CardGroup>

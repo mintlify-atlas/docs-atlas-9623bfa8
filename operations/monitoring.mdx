@@ -1,0 +1,403 @@
+---
+title: Monitoring
+description: Configure observability for Embucket with OpenTelemetry, tracing, and logging
+---
+
+Embucket provides comprehensive observability through OpenTelemetry integration, structured logging, and distributed tracing. This guide covers how to configure and use these features.
+
+## OpenTelemetry Integration
+
+Embucket uses OpenTelemetry for distributed tracing and telemetry export. All configuration is done via environment variables and CLI flags.
+
+### Exporter Protocol
+
+Choose between gRPC and HTTP protocols for telemetry export:
+
+```bash
+OTEL_EXPORTER_OTLP_PROTOCOL=grpc  # Default: grpc
+# or
+OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:122-127`
+
+<Info>
+The exporter automatically reads the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable for the collector endpoint.
+</Info>
+
+### Span Processor Configuration
+
+Embucket supports two span processor modes:
+
+<Tabs>
+  <Tab title="Batch Span Processor (Default)">
+    Standard batching processor for production use:
+    
+    ```bash
+    span_processor=batch-span-processor
+    ```
+    
+    **Reference:** `crates/embucketd/src/main.rs:234-238`
+  </Tab>
+  
+  <Tab title="Experimental Async Runtime">
+    Uses Tokio async runtime for span processing:
+    
+    ```bash
+    span_processor=batch-span-processor-experimental-async-runtime
+    ```
+    
+    **Reference:** `crates/embucketd/src/main.rs:239-246`
+    
+    <Warning>
+    This is experimental and may have different performance characteristics.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Resource Configuration
+
+Embucket exports telemetry with the service name "Em":
+
+**Reference:** `crates/embucketd/src/main.rs:230`
+
+## Tracing Configuration
+
+### Tracing Levels
+
+Control the verbosity of tracing output:
+
+```bash
+TRACING_LEVEL=info  # Default: info
+```
+
+**Available levels:**
+- `off` - No tracing
+- `info` - Informational messages (default)
+- `debug` - Debug-level details
+- `trace` - Verbose trace logging
+
+**Reference:** `crates/embucketd/src/cli.rs:130-136`
+
+<Note>
+The `TRACING_LEVEL` sets the default for OpenTelemetry traces. It can be overridden by the `RUST_LOG` environment variable for console output.
+</Note>
+
+### Trace Filtering
+
+Embucket automatically disables tracing for noisy targets:
+
+- `h2` - HTTP/2 library traces
+- `aws_smithy_runtime` - AWS SDK runtime traces
+
+**Reference:** `crates/embucketd/src/main.rs:57`
+
+### Query Execution Tracing
+
+Embucket instruments query execution with detailed spans:
+
+- `spawn_query_task` - Top-level query execution
+- `spawn_query_sub_task` - Query planning and execution
+- `query_alloc` - Memory allocation tracking per query
+- `abort_cancelled_query` - Query cancellation
+- `query_timeout_received_do_abort` - Timeout handling
+
+**Reference:** `crates/executor/src/service.rs:587-642`
+
+### Session and Service Tracing
+
+All major operations are instrumented:
+
+- Session creation and deletion
+- Query submission and execution
+- Catalog operations
+- Metadata fetches
+
+**Reference:** `crates/executor/src/service.rs:182-707`
+
+## Log Levels and Filtering
+
+### RUST_LOG Environment Variable
+
+Override tracing levels for console output using `RUST_LOG`:
+
+```bash
+# Set global level
+RUST_LOG=debug
+
+# Set per-module levels
+RUST_LOG=executor=debug,catalog=info,h2=off
+
+# Complex filtering
+RUST_LOG="executor::service=trace,aws_smithy_runtime=off"
+```
+
+**Reference:** `crates/embucketd/src/main.rs:279-292`
+
+<Tip>
+If `RUST_LOG` is not set or cannot be parsed, Embucket defaults to `INFO` level with disabled targets filtered out.
+</Tip>
+
+### Structured JSON Logging
+
+Embucket outputs logs in JSON format for easy parsing:
+
+**Reference:** `crates/embucketd/src/main.rs:299-304`
+
+Example log entry:
+```json
+{
+  "timestamp": "2024-03-09T10:15:30.123Z",
+  "level": "INFO",
+  "target": "executor::service",
+  "fields": {
+    "message": "Query submitted",
+    "query_id": "01234567-89ab-cdef-0123-456789abcdef",
+    "session_id": "session-123"
+  }
+}
+```
+
+### Filtering Allocation Events
+
+When allocation tracing is enabled, allocation events are filtered from standard logs:
+
+**Reference:** `crates/embucketd/src/main.rs:295-297`
+
+## Health Check Endpoint
+
+Embucket exposes a simple health check endpoint:
+
+```bash
+GET /health
+```
+
+**Response:**
+```json
+"OK"
+```
+
+**Reference:** `crates/embucketd/src/main.rs:180`
+
+Use this endpoint for:
+- Load balancer health checks
+- Kubernetes liveness/readiness probes
+- Monitoring service availability
+
+<CodeGroup>
+```bash curl
+curl http://localhost:3000/health
+```
+
+```yaml Kubernetes
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 3
+```
+</CodeGroup>
+
+## Metrics and Observability
+
+### Memory Allocation Tracing
+
+Enable detailed memory allocation tracking (requires `alloc-tracing` feature):
+
+```bash
+ALLOC_TRACING=true
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:97-101`
+
+When enabled, memory allocations are logged to `./alloc.log` with automatic flushing every second:
+
+**Reference:** `crates/embucketd/src/main.rs:256-264`
+
+<Warning>
+Allocation tracing has significant performance overhead. Only use for debugging memory issues in development.
+</Warning>
+
+### Query-Level Spans
+
+Each query execution creates a dedicated span with context:
+
+```rust
+query_alloc {
+  query_id = "01234567-89ab-cdef-0123-456789abcdef",
+  session_id = "session-123"
+}
+```
+
+**Reference:** `crates/executor/src/service.rs:589-594`
+
+This enables:
+- Per-query memory tracking
+- Query execution timeline visualization
+- Correlation between queries and resource usage
+
+### Execution Status Recording
+
+Embucket records detailed execution status for each query:
+
+- Query submission time
+- Execution status (running, succeeded, failed, timeout, cancelled)
+- Error codes and messages
+- Query type and row counts
+
+**Reference:** `crates/executor/src/service.rs:645-667`
+
+## Telemetry Export Configuration
+
+### Sending Telemetry Data
+
+Embucket provides a no-op telemetry endpoint for client compatibility:
+
+```bash
+POST /telemetry/send
+```
+
+**Reference:** `crates/embucketd/src/main.rs:181`
+
+<Info>
+This endpoint exists for Snowflake client compatibility and always returns "OK" without processing data.
+</Info>
+
+### OpenTelemetry Collector
+
+To send traces to a collector, configure the endpoint:
+
+```bash
+# For gRPC (default)
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+
+# For HTTP
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+```
+
+### Jaeger Example
+
+Run Jaeger and configure Embucket:
+
+```bash
+# Start Jaeger
+docker run -d --name jaeger \
+  -p 4317:4317 \
+  -p 16686:16686 \
+  jaegertracing/all-in-one:latest
+
+# Configure Embucket
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export TRACING_LEVEL=trace
+
+# Start Embucket
+./embucketd
+
+# View traces at http://localhost:16686
+```
+
+### Grafana Tempo Example
+
+```bash
+# docker-compose.yml
+services:
+  tempo:
+    image: grafana/tempo:latest
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "3200:3200"  # Tempo
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+```
+
+Configure Embucket:
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export TRACING_LEVEL=info
+```
+
+## Production Observability Setup
+
+<Steps>
+  <Step title="Configure Trace Level">
+    Set appropriate tracing level for production:
+    ```bash
+    TRACING_LEVEL=info
+    ```
+  </Step>
+  
+  <Step title="Set Up Collector">
+    Deploy OpenTelemetry Collector or compatible backend (Jaeger, Tempo, etc.)
+  </Step>
+  
+  <Step title="Configure Exporter">
+    Point Embucket to your collector:
+    ```bash
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+    OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+    ```
+  </Step>
+  
+  <Step title="Configure Log Aggregation">
+    Collect JSON logs with your preferred system (CloudWatch, Datadog, Elasticsearch, etc.)
+  </Step>
+  
+  <Step title="Set Up Health Checks">
+    Configure load balancer or orchestrator to use `/health` endpoint
+  </Step>
+  
+  <Step title="Monitor Key Metrics">
+    Track:
+    - Query execution times (from traces)
+    - Error rates (from logs)
+    - Timeout and cancellation frequency
+    - Memory usage patterns
+  </Step>
+</Steps>
+
+## Debugging with Traces
+
+When troubleshooting issues:
+
+1. **Enable debug tracing:**
+   ```bash
+   RUST_LOG=executor=debug,catalog=debug
+   TRACING_LEVEL=debug
+   ```
+
+2. **Look for key spans:**
+   - `ExecutionService::submit` - Query submission
+   - `ExecutionService::wait` - Result retrieval
+   - `spawn_query_task` - Query execution lifecycle
+   - `finished_query_status` - Final execution status
+
+3. **Check span attributes:**
+   - `query_id` - Unique query identifier
+   - `session_id` - Session context
+   - `query_status` - Execution outcome
+   - `error_code` - Snowflake-compatible error code
+
+4. **Analyze query lifecycle:**
+   - Submission → Planning → Execution → Completion
+   - Identify bottlenecks in the trace timeline
+   - Correlate errors with specific query phases

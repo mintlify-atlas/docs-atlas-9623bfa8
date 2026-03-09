@@ -1,0 +1,474 @@
+---
+title: Iceberg Catalog REST API
+description: Apache Iceberg REST Catalog API implementation for table metadata management
+---
+
+Embucket implements the Apache Iceberg REST Catalog API specification, allowing Iceberg clients to interact with table metadata stored in the metastore.
+
+## Base URL
+
+```
+http(s)://host:port/
+```
+
+Example:
+```
+http://localhost:3000/
+```
+
+## Configuration Endpoint
+
+### GET /v1/config
+
+Retrieve catalog configuration properties.
+
+**Query Parameters:**
+
+<ParamField query="warehouse" type="string">
+  Warehouse location or identifier to request from the service.
+</ParamField>
+
+**Description:**
+
+All REST clients should first call this route to get catalog configuration properties from the server. Configuration consists of two sets of key/value pairs:
+
+- **defaults** - Properties used as default configuration; applied before client configuration
+- **overrides** - Properties used to override client configuration; applied after defaults and client configuration
+
+Catalog configuration is constructed by:
+1. Setting the defaults
+2. Applying client-provided configuration
+3. Applying overrides
+
+The final property set is used to configure the catalog.
+
+**Response:**
+
+```json
+{
+  "overrides": {
+    "warehouse": "s3://bucket/warehouse/"
+  },
+  "defaults": {
+    "clients": "4"
+  }
+}
+```
+
+<ParamField path="overrides" type="object">
+  Properties that override client configuration.
+</ParamField>
+
+<ParamField path="defaults" type="object">
+  Properties used as default configuration.
+</ParamField>
+
+**Example:**
+
+```bash
+curl http://localhost:3000/v1/config
+```
+
+**Example with Warehouse:**
+
+```bash
+curl "http://localhost:3000/v1/config?warehouse=production"
+```
+
+## Common Catalog Properties
+
+The following properties are commonly returned in catalog configuration:
+
+<ParamField path="warehouse" type="string">
+  Base location for the warehouse (e.g., `s3://bucket/warehouse/`).
+</ParamField>
+
+<ParamField path="uri" type="string">
+  Catalog URI for client connections.
+</ParamField>
+
+<ParamField path="clients" type="string">
+  Number of client connections to use.
+</ParamField>
+
+<ParamField path="token" type="string">
+  Authentication token for catalog operations (if required).
+</ParamField>
+
+## Schema Types
+
+The Iceberg REST API uses the following schema types:
+
+### Schema
+
+<ParamField path="schema-id" type="integer" readOnly>
+  Unique identifier for the schema.
+</ParamField>
+
+<ParamField path="identifier-field-ids" type="array">
+  Array of field IDs that make up the identifier.
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Must be `"struct"`.
+</ParamField>
+
+<ParamField path="fields" type="array" required>
+  Array of struct fields.
+</ParamField>
+
+### StructField
+
+<ParamField path="id" type="integer" required>
+  Unique field identifier.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Field name.
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Field data type (primitive or complex).
+</ParamField>
+
+<ParamField path="required" type="boolean" required>
+  Whether the field is required (non-nullable).
+</ParamField>
+
+<ParamField path="doc" type="string">
+  Optional documentation for the field.
+</ParamField>
+
+### Primitive Types
+
+Supported primitive types:
+
+- `boolean`
+- `int`
+- `long`
+- `float`
+- `double`
+- `decimal(precision,scale)` - Example: `decimal(10,2)`
+- `date`
+- `time`
+- `timestamp`
+- `timestamptz`
+- `string`
+- `uuid`
+- `fixed[N]` - Example: `fixed[16]`
+- `binary`
+
+### Complex Types
+
+**List Type:**
+
+```json
+{
+  "type": "list",
+  "element-id": 1,
+  "element": "string",
+  "element-required": true
+}
+```
+
+**Map Type:**
+
+```json
+{
+  "type": "map",
+  "key-id": 1,
+  "key": "string",
+  "value-id": 2,
+  "value": "int",
+  "value-required": false
+}
+```
+
+## Partition Specification
+
+<ParamField path="spec-id" type="integer" readOnly>
+  Unique identifier for the partition spec.
+</ParamField>
+
+<ParamField path="fields" type="array" required>
+  Array of partition fields.
+</ParamField>
+
+### PartitionField
+
+<ParamField path="field-id" type="integer">
+  Unique field identifier.
+</ParamField>
+
+<ParamField path="source-id" type="integer" required>
+  Source column ID from the schema.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Partition field name.
+</ParamField>
+
+<ParamField path="transform" type="string" required>
+  Transform function applied to the source column.
+</ParamField>
+
+**Transform Functions:**
+
+- `identity` - No transformation
+- `year` - Extract year from timestamp
+- `month` - Extract month from timestamp
+- `day` - Extract day from timestamp
+- `hour` - Extract hour from timestamp
+- `bucket[N]` - Hash bucket with N buckets (e.g., `bucket[256]`)
+- `truncate[W]` - Truncate string to W characters (e.g., `truncate[16]`)
+
+## Sort Order
+
+<ParamField path="order-id" type="integer" readOnly>
+  Unique identifier for the sort order.
+</ParamField>
+
+<ParamField path="fields" type="array" required>
+  Array of sort fields.
+</ParamField>
+
+### SortField
+
+<ParamField path="source-id" type="integer" required>
+  Source column ID from the schema.
+</ParamField>
+
+<ParamField path="transform" type="string" required>
+  Transform function (same as partition transforms).
+</ParamField>
+
+<ParamField path="direction" type="enum" required>
+  Sort direction: `asc` or `desc`.
+</ParamField>
+
+<ParamField path="null-order" type="enum" required>
+  Null ordering: `nulls-first` or `nulls-last`.
+</ParamField>
+
+## Table Metadata
+
+<ParamField path="format-version" type="integer" required>
+  Iceberg table format version (1 or 2).
+</ParamField>
+
+<ParamField path="table-uuid" type="string" required>
+  Unique identifier for the table.
+</ParamField>
+
+<ParamField path="location" type="string">
+  Base location for table data.
+</ParamField>
+
+<ParamField path="last-updated-ms" type="integer">
+  Timestamp of last update in milliseconds.
+</ParamField>
+
+<ParamField path="properties" type="object">
+  Table properties as key-value pairs.
+</ParamField>
+
+<ParamField path="schemas" type="array">
+  Array of schema objects.
+</ParamField>
+
+<ParamField path="current-schema-id" type="integer">
+  ID of the current schema.
+</ParamField>
+
+<ParamField path="partition-specs" type="array">
+  Array of partition specifications.
+</ParamField>
+
+<ParamField path="default-spec-id" type="integer">
+  ID of the default partition spec.
+</ParamField>
+
+<ParamField path="sort-orders" type="array">
+  Array of sort orders.
+</ParamField>
+
+<ParamField path="default-sort-order-id" type="integer">
+  ID of the default sort order.
+</ParamField>
+
+<ParamField path="snapshots" type="array">
+  Array of table snapshots.
+</ParamField>
+
+<ParamField path="current-snapshot-id" type="integer">
+  ID of the current snapshot.
+</ParamField>
+
+## Snapshot
+
+<ParamField path="snapshot-id" type="integer" required>
+  Unique snapshot identifier.
+</ParamField>
+
+<ParamField path="parent-snapshot-id" type="integer">
+  ID of the parent snapshot.
+</ParamField>
+
+<ParamField path="timestamp-ms" type="integer" required>
+  Snapshot timestamp in milliseconds.
+</ParamField>
+
+<ParamField path="manifest-list" type="string" required>
+  Location of the snapshot's manifest list file.
+</ParamField>
+
+<ParamField path="summary" type="object" required>
+  Snapshot summary information.
+</ParamField>
+
+<ParamField path="summary.operation" type="enum" required>
+  Snapshot operation type: `append`, `replace`, `overwrite`, or `delete`.
+</ParamField>
+
+## Snapshot References
+
+<ParamField path="type" type="enum" required>
+  Reference type: `tag` or `branch`.
+</ParamField>
+
+<ParamField path="snapshot-id" type="integer" required>
+  ID of the referenced snapshot.
+</ParamField>
+
+<ParamField path="max-ref-age-ms" type="integer">
+  Maximum age of the reference in milliseconds.
+</ParamField>
+
+<ParamField path="max-snapshot-age-ms" type="integer">
+  Maximum age of snapshots in milliseconds.
+</ParamField>
+
+<ParamField path="min-snapshots-to-keep" type="integer">
+  Minimum number of snapshots to retain.
+</ParamField>
+
+## Usage Examples
+
+### Python (pyiceberg)
+
+```python
+from pyiceberg.catalog import load_catalog
+
+catalog = load_catalog(
+    "embucket",
+    **{
+        "uri": "http://localhost:3000",
+        "warehouse": "s3://my-bucket/warehouse",
+    }
+)
+
+# List namespaces
+namespaces = catalog.list_namespaces()
+
+# List tables
+tables = catalog.list_tables("analytics")
+
+# Load table
+table = catalog.load_table("analytics.public.users")
+```
+
+### Java (Iceberg)
+
+```java
+import org.apache.iceberg.catalog.Catalog;
+import org.apache.iceberg.rest.RESTCatalog;
+
+Map<String, String> properties = new HashMap<>();
+properties.put("uri", "http://localhost:3000");
+properties.put("warehouse", "s3://my-bucket/warehouse");
+
+Catalog catalog = new RESTCatalog();
+catalog.initialize("embucket", properties);
+
+// List namespaces
+List<Namespace> namespaces = catalog.listNamespaces();
+
+// Load table
+Table table = catalog.loadTable(TableIdentifier.of("analytics", "public", "users"));
+```
+
+### Spark Configuration
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .config("spark.sql.catalog.embucket", "org.apache.iceberg.spark.SparkCatalog") \
+    .config("spark.sql.catalog.embucket.catalog-impl", "org.apache.iceberg.rest.RESTCatalog") \
+    .config("spark.sql.catalog.embucket.uri", "http://localhost:3000") \
+    .config("spark.sql.catalog.embucket.warehouse", "s3://my-bucket/warehouse") \
+    .getOrCreate()
+
+# Query Iceberg table
+df = spark.sql("SELECT * FROM embucket.analytics.public.users")
+df.show()
+```
+
+## Configuration Examples
+
+### S3 Warehouse
+
+```json
+{
+  "overrides": {
+    "warehouse": "s3://my-data-lake/warehouse/",
+    "s3.region": "us-west-2"
+  },
+  "defaults": {
+    "clients": "8"
+  }
+}
+```
+
+### File System Warehouse
+
+```json
+{
+  "overrides": {
+    "warehouse": "file:///data/warehouse/"
+  },
+  "defaults": {
+    "clients": "4"
+  }
+}
+```
+
+## Error Handling
+
+The API returns standard HTTP status codes:
+
+- **200 OK** - Request succeeded
+- **400 Bad Request** - Invalid request parameters
+- **401 Unauthorized** - Authentication required
+- **404 Not Found** - Resource not found
+- **409 Conflict** - Resource conflict (e.g., table already exists)
+- **500 Internal Server Error** - Server error
+
+## Timeouts
+
+Configure catalog operation timeouts:
+
+```bash
+embucketd --iceberg-catalog-timeout-secs 20
+```
+
+Or via environment variable:
+```bash
+export ICEBERG_CATALOG_TIMEOUT_SECS=20
+```
+
+## References
+
+- [Apache Iceberg REST Catalog Specification](https://iceberg.apache.org/docs/latest/rest-catalog/)
+- [Iceberg Table Spec](https://iceberg.apache.org/docs/latest/spec/)
+- [Catalog Properties](https://iceberg.apache.org/docs/latest/configuration/#catalog-properties)

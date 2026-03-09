@@ -1,0 +1,132 @@
+---
+title: Catalogs & Storage Overview
+description: Understanding how Embucket manages data lake catalogs and storage
+---
+
+## What are Catalogs?
+
+Catalogs in Embucket organize and manage metadata about your data lake tables. They provide a hierarchical namespace for organizing databases, schemas, and tables, similar to how traditional databases structure their metadata.
+
+A catalog serves as the root of your data hierarchy:
+
+```
+Catalog (Volume)
+└── Database
+    └── Schema
+        └── Table
+```
+
+## Why Catalogs Matter
+
+Catalogs are essential for:
+
+- **Organization**: Structure your data lake with familiar database/schema/table hierarchy
+- **Metadata Management**: Track table locations, schemas, and properties in a centralized way
+- **Access Control**: Define permissions and access patterns at different levels
+- **Multi-Tenancy**: Isolate data for different teams or projects using separate catalogs
+- **Query Routing**: Direct queries to the appropriate storage backends automatically
+
+## The Hierarchy Model
+
+Embucket uses a four-level hierarchy to organize data:
+
+### Volume
+The physical storage backend where data resides. A volume can be S3, S3 Tables, local filesystem, or in-memory storage. Volumes are the foundation that catalogs build upon.
+
+### Database
+A logical grouping of schemas within a volume. Each database is associated with exactly one volume and represents a catalog in Snowflake terms.
+
+### Schema
+A namespace within a database that contains tables. Schemas provide an additional level of organization and are commonly used to separate different datasets or environments (e.g., `production`, `staging`, `public`).
+
+### Table
+The actual data structure containing rows and columns. Tables in Embucket use Apache Iceberg format for ACID transactions and time travel capabilities.
+
+## Supported Catalog Types
+
+Embucket supports multiple catalog types to fit different use cases:
+
+<CardGroup cols={2}>
+  <Card title="S3 Tables" icon="database" href="/catalogs/s3-tables">
+    Native AWS S3 Table Buckets with automatic metadata management
+  </Card>
+  <Card title="External Iceberg" icon="table" href="/catalogs/external-iceberg">
+    Connect to existing Iceberg tables on S3 or other storage
+  </Card>
+  <Card title="In-Memory" icon="memory">
+    Temporary storage for development and testing
+  </Card>
+  <Card title="File System" icon="folder">
+    Local filesystem storage for single-node deployments
+  </Card>
+</CardGroup>
+
+## Configuring Catalogs
+
+Catalogs are defined using a YAML configuration file passed to `embucketd` at startup:
+
+```bash
+./embucketd --metastore-config config/metastore.yaml
+```
+
+The configuration file defines volumes, databases, schemas, and tables that should be available when Embucket starts. Here's a minimal example:
+
+```yaml
+volumes:
+  - ident: lakehouse
+    type: s3
+    region: us-east-2
+    bucket: my-data-lake
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_KEY
+      aws-secret-access-key: YOUR_SECRET
+
+databases:
+  - ident: analytics
+    volume: lakehouse
+
+schemas:
+  - database: analytics
+    schema: public
+```
+
+## Choosing the Right Catalog Type
+
+Select your catalog type based on your requirements:
+
+### Use S3 Tables When:
+- You want AWS-managed metadata and automatic indexing
+- You're building a new data lake on AWS
+- You need tight integration with AWS services
+- You want AWS to handle metadata availability and scaling
+
+### Use External Iceberg When:
+- You have existing Iceberg tables from other tools (Spark, Trino, etc.)
+- You need maximum flexibility in table organization
+- You want to manage metadata files yourself
+- You need to support multiple query engines
+
+### Use In-Memory When:
+- Running tests or development experiments
+- Creating temporary tables for query processing
+- Prototyping without persistence requirements
+
+### Use File System When:
+- Deploying on a single node without cloud storage
+- Local development and testing
+- Low-latency access on the same machine
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure S3 Tables" icon="aws" href="/catalogs/s3-tables">
+    Set up AWS S3 Table Buckets catalog
+  </Card>
+  <Card title="Connect External Iceberg" icon="link" href="/catalogs/external-iceberg">
+    Register existing Iceberg tables
+  </Card>
+  <Card title="Metastore Configuration" icon="gear" href="/catalogs/metastore-config">
+    Complete YAML schema reference
+  </Card>
+</CardGroup>

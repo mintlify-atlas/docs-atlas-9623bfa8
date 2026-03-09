@@ -1,0 +1,347 @@
+---
+title: "Snowflake Compatibility"
+description: "Understand Embucket's compatibility with Snowflake SQL and APIs"
+---
+
+Embucket provides wire-compatible Snowflake SQL REST API support, enabling existing Snowflake clients, SDKs, and tools to connect without modification. This page describes what Snowflake features are supported and key differences.
+
+## API Compatibility
+
+Embucket implements the Snowflake SQL REST API v1 specification, providing compatibility with official Snowflake client libraries.
+
+### Supported Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key">
+    Session creation with JWT token-based authentication
+  </Card>
+  <Card title="Query Execution" icon="play">
+    Synchronous and asynchronous query submission
+  </Card>
+  <Card title="Query Cancellation" icon="stop">
+    Abort running queries by request ID
+  </Card>
+  <Card title="Session Management" icon="user">
+    Create, refresh, and delete sessions
+  </Card>
+</CardGroup>
+
+**Authentication endpoint:**
+```http
+POST /session/v1/login-request
+Content-Type: application/json
+
+{
+  "data": {
+    "LOGIN_NAME": "embucket",
+    "PASSWORD": "embucket",
+    "ACCOUNT_NAME": "acc",
+    "CLIENT_APP_ID": "MyApp",
+    "CLIENT_APP_VERSION": "1.0.0",
+    "CLIENT_ENVIRONMENT": {},
+    "SESSION_PARAMETERS": {}
+  }
+}
+```
+
+Returns JWT token valid for 3 days (configurable). Token contains session metadata including username, database, schema, and warehouse context.
+
+**Query execution endpoint:**
+```http
+POST /queries/v1/query-request?requestId={uuid}
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+
+{
+  "sqlText": "SELECT * FROM customers LIMIT 10",
+  "asyncExec": false,
+  "querySubmissionTime": 1234567890
+}
+```
+
+Returns results in Snowflake JSON format with rowset data and column metadata.
+
+**Implementation:** See `crates/api-snowflake-rest/src/server/router.rs` for endpoint definitions.
+
+### Authentication & Sessions
+
+Embucket uses JWT tokens for authentication with session metadata encoded in claims.
+
+**Session parameters:**
+- Database: Current database context
+- Schema: Current schema context  
+- Warehouse: Logical warehouse identifier (informational)
+- User: Authenticated username
+- Account: Account name (from login)
+
+**Session lifecycle:**
+1. Login request creates new session with unique ID
+2. JWT token issued with session metadata
+3. Session expires after inactivity (default: configurable)
+4. Expired sessions automatically cleaned up
+5. Session can be explicitly deleted via `/session` endpoint
+
+See `crates/api-snowflake-rest/src/server/logic.rs:27` for login request handling.
+
+**Demo authentication:**
+By default, Embucket accepts demo credentials:
+- Username: `embucket` (configurable via `--auth-demo-user`)
+- Password: `embucket` (configurable via `--auth-demo-password`)
+
+Production deployments should configure custom credentials or integrate with external authentication systems.
+
+## SQL Dialect Compatibility
+
+Embucket supports the Snowflake SQL dialect with extensive syntax compatibility for common operations.
+
+### Supported SQL Features
+
+<Tabs>
+  <Tab title="Data Query (DQL)">
+    - `SELECT` with joins, subqueries, CTEs
+    - `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`
+    - `LIMIT`, `OFFSET`, `TOP N`
+    - `UNION`, `INTERSECT`, `EXCEPT`
+    - Window functions (`ROW_NUMBER`, `RANK`, `LAG`, `LEAD`, etc.)
+    - Aggregate functions (`SUM`, `COUNT`, `AVG`, `MIN`, `MAX`, etc.)
+    - Lateral joins (`LATERAL`, `TABLE()`)
+    - Pivot and unpivot operations
+    - Semi-structured data queries (`GET`, `GET_PATH`, array indexing)
+  </Tab>
+  <Tab title="Data Definition (DDL)">
+    - `CREATE TABLE` with Iceberg storage
+    - `CREATE TABLE AS SELECT` (CTAS)
+    - `CREATE OR REPLACE TABLE`
+    - `CREATE VIEW` and `CREATE OR REPLACE VIEW`
+    - `CREATE SCHEMA` / `CREATE DATABASE`
+    - `DROP TABLE`, `DROP VIEW`, `DROP SCHEMA`, `DROP DATABASE`
+    - `ALTER TABLE` (limited operations)
+    - `TRUNCATE TABLE`
+    - `SHOW TABLES`, `SHOW SCHEMAS`, `SHOW DATABASES`
+    - `DESCRIBE TABLE`
+  </Tab>
+  <Tab title="Data Manipulation (DML)">
+    - `INSERT INTO ... VALUES`
+    - `INSERT INTO ... SELECT`
+    - `UPDATE` with conditions
+    - `DELETE` with conditions
+    - `MERGE INTO` (upsert operations)
+    - `COPY INTO` for bulk loading from files
+  </Tab>
+  <Tab title="Functions">
+    - **String functions**: `CONCAT`, `SUBSTRING`, `TRIM`, `UPPER`, `LOWER`, `REPLACE`, `REGEXP_REPLACE`, etc.
+    - **Date/time functions**: `CURRENT_TIMESTAMP`, `DATEADD`, `DATEDIFF`, `DATE_TRUNC`, `EXTRACT`, etc.
+    - **Numeric functions**: `ROUND`, `CEIL`, `FLOOR`, `ABS`, `POWER`, `SQRT`, etc.
+    - **Conditional functions**: `CASE`, `COALESCE`, `NULLIF`, `IFF`, `NVL`, etc.
+    - **Aggregate functions**: `SUM`, `COUNT`, `AVG`, `MIN`, `MAX`, `STDDEV`, `VARIANCE`, etc.
+    - **Semi-structured**: `PARSE_JSON`, `OBJECT_CONSTRUCT`, `ARRAY_CONSTRUCT`, `FLATTEN`, etc.
+    - **Conversion functions**: `CAST`, `TRY_CAST`, `TO_VARCHAR`, `TO_NUMBER`, `TO_DATE`, etc.
+  </Tab>
+</Tabs>
+
+### SQL Parsing
+
+Embucket uses a custom SQL parser built on `sqlparser-rs` with Snowflake dialect extensions.
+
+**Parser features:**
+- Snowflake-specific syntax (e.g., `FLATTEN`, `$1` positional parameters)
+- Case-insensitive identifiers with optional normalization
+- Identifier quoting rules (double quotes preserve case)
+- Session parameter substitution
+- Table function support (e.g., `TABLE(FLATTEN(...))`)
+- `COPY INTO` statement parsing
+
+**Query rewriting:**
+
+Embucket applies several query rewrites for compatibility:
+
+1. **Identifier case normalization**: Converts unquoted identifiers to uppercase (Snowflake convention)
+2. **Function translation**: Maps Snowflake functions to DataFusion equivalents
+3. **Syntax desugaring**: Expands Snowflake-specific syntax to standard SQL
+4. **Session context injection**: Resolves session parameters in queries
+
+See `crates/executor/src/query.rs:140` for query parsing implementation.
+
+## Supported Data Types
+
+Embucket supports most common Snowflake data types through Arrow/DataFusion type mapping:
+
+| Snowflake Type | Embucket/Arrow Type | Notes |
+|----------------|---------------------|-------|
+| `NUMBER(p,s)` | `Decimal128(p,s)` | Precision up to 38 |
+| `INT`, `INTEGER` | `Int64` | |
+| `BIGINT` | `Int64` | |
+| `SMALLINT` | `Int16` | |
+| `FLOAT`, `DOUBLE` | `Float64` | |
+| `VARCHAR`, `STRING`, `TEXT` | `Utf8` | |
+| `BINARY`, `VARBINARY` | `Binary` | |
+| `BOOLEAN` | `Boolean` | |
+| `DATE` | `Date32` | Days since epoch |
+| `TIME` | `Time64(Nanosecond)` | |
+| `TIMESTAMP`, `TIMESTAMP_NTZ` | `Timestamp(Nanosecond)` | |
+| `TIMESTAMP_LTZ` | `Timestamp(Nanosecond, tz)` | With timezone |
+| `TIMESTAMP_TZ` | `Timestamp(Nanosecond, tz)` | With timezone |
+| `VARIANT` | `Union` or `Utf8` | Semi-structured data |
+| `OBJECT` | `Struct` | |
+| `ARRAY` | `List` | |
+
+**Type conversion:**
+Automatic type coercion follows Snowflake semantics where possible. Use `CAST` or `TRY_CAST` for explicit conversions.
+
+## Compatible Clients & Tools
+
+Embucket works with standard Snowflake client tools:
+
+<CardGroup cols={2}>
+  <Card title="Snowflake CLI" icon="terminal">
+    Official `snow sql` command-line tool
+  </Card>
+  <Card title="Python Connector" icon="python">
+    `snowflake-connector-python` library
+  </Card>
+  <Card title="JDBC/ODBC" icon="database">
+    Snowflake JDBC and ODBC drivers (API endpoints)
+  </Card>
+  <Card title="dbt" icon="diagram-project">
+    dbt-snowflake adapter for transformations
+  </Card>
+</CardGroup>
+
+**Configuration example (Snowflake CLI):**
+```yaml
+# ~/.snowflake/config.toml
+[connections.embucket]
+host = "localhost"
+port = 3000
+protocol = "http"
+account = "acc.local"
+user = "embucket"
+password = "embucket"
+database = "demo"
+schema = "public"
+warehouse = "em.wh"
+```
+
+See the [Quickstart](/quickstart) for detailed setup instructions.
+
+## Key Differences from Snowflake
+
+While Embucket provides broad compatibility, there are important differences:
+
+### Architecture Differences
+
+<Warning>
+  **No distributed query execution**: Each Embucket node executes queries independently. For distributed processing across multiple nodes, use a separate query engine like Apache Spark or Trino with the same Iceberg tables.
+</Warning>
+
+- **Query-per-node model**: Queries run entirely on one node vs. Snowflake's distributed execution
+- **No automatic clustering**: Table optimization requires manual OPTIMIZE commands
+- **Local caching only**: Metadata and result caching is per-node, not global
+- **Session affinity**: Session state (temp tables, variables) exists only on the session node
+
+### Unsupported Features
+
+**Enterprise features:**
+- Multi-cluster warehouses
+- Automatic query optimization and statistics
+- Query result caching across sessions
+- Data sharing and marketplaces
+- Replication and failover
+- Row-level security policies
+- Column-level security and masking
+- External functions (AWS Lambda, etc.)
+
+**Advanced SQL features:**
+- User-defined functions (UDFs) in JavaScript/Java
+- Stored procedures
+- Tasks and streams (change data capture)
+- Snowpipe (continuous loading)
+- External tables (partial support)
+- Materialized views
+- Transient and temporary tables (limited)
+
+**Account and access management:**
+- Role-based access control (RBAC)
+- User and role management commands
+- Resource monitors
+- Network policies
+
+### Behavior Differences
+
+**Transactions:**
+- Embucket supports single-statement transactions via Iceberg
+- Multi-statement transactions have limited support
+- No `BEGIN TRANSACTION` / `COMMIT` / `ROLLBACK` (uses auto-commit)
+
+**Concurrency:**
+- Configurable concurrent query limit (default: 100 per node)
+- No automatic query queueing - exceeding limit returns error
+- No warehouse scaling or query distribution
+
+**Performance:**
+- Query performance depends on node resources (CPU, memory)
+- No automatic performance tuning or query optimization hints
+- Smaller data volumes recommended for single-node architecture
+
+## Migration Considerations
+
+When migrating from Snowflake to Embucket:
+
+<Steps>
+  <Step title="Assess SQL compatibility">
+    Review queries for unsupported features (UDFs, stored procedures, etc.)
+  </Step>
+  <Step title="Test workload">
+    Run representative queries to validate correctness and performance
+  </Step>
+  <Step title="Adjust client configuration">
+    Update connection strings to point to Embucket endpoint
+  </Step>
+  <Step title="Plan for architecture differences">
+    Understand single-node execution model and concurrency limits
+  </Step>
+  <Step title="Export to Iceberg format">
+    Convert existing tables to Apache Iceberg if not already
+  </Step>
+</Steps>
+
+**Best practices:**
+- Start with read-heavy analytical workloads
+- Use Embucket for development/testing environments
+- Validate query results against Snowflake before cutover
+- Monitor resource usage and adjust node sizing accordingly
+- Consider horizontal scaling for higher throughput needs
+
+## Troubleshooting
+
+### Common Issues
+
+**"Invalid authentication data" error:**
+- Verify username/password matches configured demo credentials
+- Check account name format (include region if needed)
+
+**"Query timeout" errors:**
+- Increase `--query-timeout-secs` CLI argument (default: 1200)
+- Optimize query or add indexes/partitioning to underlying tables
+- Consider breaking large queries into smaller pieces
+
+**"Query limit exceeded" errors:**
+- Increase `--max-concurrency-level` CLI argument (default: 100)
+- Add more Embucket nodes behind load balancer
+- Review concurrent query patterns and add throttling
+
+**Unsupported syntax errors:**
+- Check if query uses Snowflake-specific features not yet implemented
+- Rewrite using standard SQL or supported functions
+- File issue on GitHub for feature requests
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" href="/concepts/architecture" icon="sitemap">
+    Learn how Embucket's architecture works
+  </Card>
+  <Card title="Iceberg Integration" href="/concepts/iceberg-integration" icon="layer-group">
+    Understand Apache Iceberg storage
+  </Card>
+</CardGroup>

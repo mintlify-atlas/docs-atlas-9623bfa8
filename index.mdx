@@ -1,97 +1,144 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Embucket Documentation"
+description: "Run Snowflake SQL dialect on your data lake in 30 seconds. Zero dependencies."
 ---
 
-## Setting up
+<div style={{
+  background: 'linear-gradient(135deg, rgba(182, 234, 127, 0.1) 0%, rgba(29, 29, 36, 0.95) 100%)',
+  borderRadius: '8px',
+  padding: '3rem 2rem',
+  marginBottom: '2rem',
+  border: '1px solid rgba(182, 234, 127, 0.2)'
+}}>
+  <h1 style={{
+    fontSize: '2.5rem',
+    fontWeight: '700',
+    marginBottom: '1rem',
+    color: '#b6ea7f'
+  }}>
+    Wire-Compatible Snowflake for Apache Iceberg
+  </h1>
+  <p style={{
+    fontSize: '1.25rem',
+    marginBottom: '2rem',
+    color: '#e0e0e0'
+  }}>
+    Single binary lakehouse providing Snowflake SQL dialect and API compatibility with Apache Iceberg storage. Perfect for simple deployments.
+  </p>
+  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+    <a href="/quickstart" style={{
+      background: '#b9f27c',
+      color: '#000000',
+      padding: '0.75rem 1.5rem',
+      borderRadius: '4px',
+      textDecoration: 'none',
+      fontWeight: '600'
+    }}>
+      Get Started →
+    </a>
+    <a href="https://github.com/embucket/embucket" style={{
+      background: 'transparent',
+      color: '#cccccc',
+      padding: '0.75rem 1.5rem',
+      border: '1px solid #cccccc',
+      borderRadius: '4px',
+      textDecoration: 'none',
+      fontWeight: '600'
+    }}>
+      View on GitHub
+    </a>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+## Key Features
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Snowflake Compatible" icon="snowflake" href="/concepts/snowflake-compatibility">
+    Use existing Snowflake queries, dbt projects, and BI tools without modification
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Apache Iceberg Storage" icon="database" href="/concepts/iceberg-integration">
+    Your data stays in Apache Iceberg format with ACID guarantees and no lock-in
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Single Binary Deployment" icon="cube" href="/deployment/binary">
+    Zero dependencies, radical simplicity. Deploy anywhere from laptops to Lambda
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Horizontal Scaling" icon="arrows-split-up-and-left" href="/concepts/architecture">
+    Query-per-node architecture. Add nodes for more throughput
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Quick Start
 
-Everything you need to create world-class documentation.
+Get Embucket running in 30 seconds:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<Steps>
+  <Step title="Start Embucket">
+    Run the Docker container and expose the API on port 3000:
+    
+    ```bash
+    docker run --name embucket --rm -p 3000:3000 embucket/embucket
+    ```
+  </Step>
+  
+  <Step title="Connect with Snowflake CLI">
+    Install and configure the Snowflake CLI to connect to your local Embucket instance:
+    
+    ```bash
+    pip install snowflake-cli
+    snow connection add --connection-name local \
+      --host localhost --port 3000 --protocol http \
+      --account acc.local --user embucket --password embucket
+    ```
+  </Step>
+  
+  <Step title="Run Your First Query">
+    Execute Snowflake SQL against your local instance:
+    
+    ```bash
+    snow sql -c local -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
+    ```
+  </Step>
+</Steps>
 
-## Need inspiration?
+<Note>
+Ready to deploy? Check out our [deployment guides](/deployment/docker) for Docker, AWS Lambda, and bare metal options.
+</Note>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Use Cases
+
+<CardGroup cols={3}>
+  <Card title="dbt Development" icon="hammer" href="/guides/dbt-integration">
+    Run your dbt Snowflake projects locally for fast development cycles
+  </Card>
+  <Card title="Data Lake Querying" icon="magnifying-glass" href="/catalogs/overview">
+    Query S3 Tables and external Iceberg catalogs with Snowflake SQL
+  </Card>
+  <Card title="Serverless Analytics" icon="bolt" href="/deployment/aws-lambda">
+    Deploy on AWS Lambda for cost-effective, on-demand query execution
+  </Card>
+</CardGroup>
+
+## Built on Proven Open Source
+
+Embucket combines industry-standard technologies:
+
+- **[Apache DataFusion](https://datafusion.apache.org/)** — High-performance SQL execution engine
+- **[Apache Iceberg](https://iceberg.apache.org/)** — ACID table metadata and storage format
+- **Rust** — Memory-safe systems programming for reliability and performance
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Introduction" icon="book-open" href="/introduction">
+    Learn about Embucket's architecture and design principles
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Embucket on your preferred platform
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/deployment/configuration">
+    Configure catalogs, storage, and performance settings
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/cli-reference">
+    Explore CLI flags, environment variables, and REST APIs
+  </Card>
+</CardGroup>

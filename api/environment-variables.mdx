@@ -1,0 +1,380 @@
+---
+title: Environment Variables
+description: Environment variables for configuring Embucket server and volume bootstrapping
+---
+
+Embucket can be configured entirely through environment variables, making it ideal for containerized deployments. All CLI flags have corresponding environment variables.
+
+## Server Configuration
+
+<ParamField path="METASTORE_CONFIG" type="string">
+  Path to YAML config file describing volumes/databases to seed the metastore.
+  
+  ```bash
+  export METASTORE_CONFIG="/etc/embucket/config.yaml"
+  ```
+</ParamField>
+
+<ParamField path="BUCKET_HOST" type="string" default="localhost">
+  Host address to bind the server to.
+  
+  ```bash
+  export BUCKET_HOST="0.0.0.0"
+  ```
+</ParamField>
+
+<ParamField path="BUCKET_PORT" type="integer" default="3000">
+  Port number to bind the server to.
+  
+  ```bash
+  export BUCKET_PORT="8080"
+  ```
+</ParamField>
+
+<ParamField path="IDLE_TIMEOUT_SECONDS" type="integer" default="18000">
+  Service idle timeout in seconds.
+  
+  ```bash
+  export IDLE_TIMEOUT_SECONDS="3600"
+  ```
+</ParamField>
+
+## Query Execution
+
+<ParamField path="MAX_CONCURRENCY_LEVEL" type="integer" default="8">
+  Maximum number of queries running simultaneously.
+  
+  ```bash
+  export MAX_CONCURRENCY_LEVEL="32"
+  ```
+</ParamField>
+
+<ParamField path="QUERY_TIMEOUT_SECS" type="integer" default="1200">
+  Maximum duration in seconds for a single query.
+  
+  ```bash
+  export QUERY_TIMEOUT_SECS="600"
+  ```
+</ParamField>
+
+<ParamField path="MAX_CONCURRENT_TABLE_FETCHES" type="integer" default="2">
+  Maximum concurrent requests to get table details.
+  
+  ```bash
+  export MAX_CONCURRENT_TABLE_FETCHES="4"
+  ```
+</ParamField>
+
+## Memory and Resources
+
+<ParamField path="MEM_POOL_TYPE" type="enum" default="greedy">
+  Memory pool type: `greedy` or `fair`.
+  
+  ```bash
+  export MEM_POOL_TYPE="fair"
+  ```
+</ParamField>
+
+<ParamField path="MEM_POOL_SIZE_MB" type="integer">
+  Maximum memory pool size in megabytes.
+  
+  ```bash
+  export MEM_POOL_SIZE_MB="8192"
+  ```
+</ParamField>
+
+<ParamField path="MEM_ENABLE_TRACK_CONSUMERS_POOL" type="boolean" default="false">
+  Enable per-consumer memory usage tracking.
+  
+  ```bash
+  export MEM_ENABLE_TRACK_CONSUMERS_POOL="true"
+  ```
+</ParamField>
+
+<ParamField path="DISK_POOL_SIZE_MB" type="integer">
+  Maximum disk pool size in megabytes for spilling.
+  
+  ```bash
+  export DISK_POOL_SIZE_MB="20480"
+  ```
+</ParamField>
+
+<ParamField path="ALLOC_TRACING" type="boolean" default="false">
+  Enable memory tracing functionality.
+  
+  ```bash
+  export ALLOC_TRACING="true"
+  ```
+</ParamField>
+
+## Data Format
+
+<ParamField path="DATA_FORMAT" type="string" default="json">
+  Data serialization format in Snowflake v1 API.
+  
+  ```bash
+  export DATA_FORMAT="json"
+  ```
+</ParamField>
+
+<ParamField path="SQL_PARSER_DIALECT" type="string" default="snowflake">
+  SQL parser dialect: `snowflake`, `postgres`, `mysql`, or `generic`.
+  
+  ```bash
+  export SQL_PARSER_DIALECT="postgres"
+  ```
+</ParamField>
+
+## Authentication
+
+<ParamField path="AUTH_DEMO_USER" type="string" default="embucket">
+  Username for demo authentication.
+  
+  ```bash
+  export AUTH_DEMO_USER="admin"
+  ```
+</ParamField>
+
+<ParamField path="AUTH_DEMO_PASSWORD" type="string" default="embucket">
+  Password for demo authentication.
+  
+  ```bash
+  export AUTH_DEMO_PASSWORD="secure_password"
+  ```
+</ParamField>
+
+<ParamField path="JWT_SECRET" type="string">
+  JWT secret for authentication. Automatically cleared after startup.
+  
+  <Warning>Keep this value secret in production environments.</Warning>
+  
+  ```bash
+  export JWT_SECRET="your-secure-secret-key"
+  ```
+</ParamField>
+
+## AWS SDK Configuration
+
+<ParamField path="AWS_SDK_CONNECT_TIMEOUT_SECS" type="integer" default="3">
+  AWS SDK connection timeout in seconds.
+  
+  ```bash
+  export AWS_SDK_CONNECT_TIMEOUT_SECS="5"
+  ```
+</ParamField>
+
+<ParamField path="AWS_SDK_OPERATION_TIMEOUT_SECS" type="integer" default="30">
+  AWS SDK operation timeout in seconds.
+  
+  ```bash
+  export AWS_SDK_OPERATION_TIMEOUT_SECS="60"
+  ```
+</ParamField>
+
+<ParamField path="AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS" type="integer" default="10">
+  AWS SDK operation attempt timeout in seconds.
+  
+  ```bash
+  export AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS="15"
+  ```
+</ParamField>
+
+## Iceberg Configuration
+
+<ParamField path="ICEBERG_CREATE_TABLE_TIMEOUT_SECS" type="integer" default="30">
+  Iceberg table creation timeout in seconds.
+  
+  ```bash
+  export ICEBERG_CREATE_TABLE_TIMEOUT_SECS="60"
+  ```
+</ParamField>
+
+<ParamField path="ICEBERG_CATALOG_TIMEOUT_SECS" type="integer" default="10">
+  Iceberg catalog operation timeout in seconds.
+  
+  ```bash
+  export ICEBERG_CATALOG_TIMEOUT_SECS="20"
+  ```
+</ParamField>
+
+## Object Store Configuration
+
+<ParamField path="OBJECT_STORE_TIMEOUT_SECS" type="integer" default="10">
+  Object store operation timeout in seconds.
+  
+  ```bash
+  export OBJECT_STORE_TIMEOUT_SECS="30"
+  ```
+</ParamField>
+
+<ParamField path="OBJECT_STORE_CONNECT_TIMEOUT_SECS" type="integer" default="3">
+  Object store connection timeout in seconds.
+  
+  ```bash
+  export OBJECT_STORE_CONNECT_TIMEOUT_SECS="5"
+  ```
+</ParamField>
+
+## Observability
+
+<ParamField path="TRACING_LEVEL" type="enum" default="info">
+  Tracing level: `off`, `info`, `debug`, or `trace`. Can be overridden by `RUST_LOG`.
+  
+  ```bash
+  export TRACING_LEVEL="debug"
+  ```
+</ParamField>
+
+<ParamField path="span_processor" type="enum" default="batch-span-processor">
+  Tracing span processor type.
+  
+  ```bash
+  export span_processor="batch-span-processor"
+  ```
+</ParamField>
+
+<ParamField path="OTEL_EXPORTER_OTLP_PROTOCOL" type="string" default="grpc">
+  OpenTelemetry Exporter Protocol: `grpc` or `http`.
+  
+  ```bash
+  export OTEL_EXPORTER_OTLP_PROTOCOL="http"
+  ```
+</ParamField>
+
+## Volume Bootstrap Variables
+
+These variables allow you to bootstrap a volume at startup without a YAML configuration file.
+
+<ParamField path="VOLUME_TYPE" type="enum">
+  Type of volume to bootstrap.
+  
+  **Options:** `s3`, `s3tables` (or `s3_tables`, `s3-tables`), `memory`
+  
+  ```bash
+  export VOLUME_TYPE="s3"
+  ```
+</ParamField>
+
+<ParamField path="VOLUME_IDENT" type="string" default="embucket">
+  Identifier name for the volume.
+  
+  ```bash
+  export VOLUME_IDENT="my_volume"
+  ```
+</ParamField>
+
+<ParamField path="VOLUME_DATABASE" type="string">
+  Optional database name to auto-create with this volume.
+  
+  ```bash
+  export VOLUME_DATABASE="my_database"
+  ```
+</ParamField>
+
+### S3 Volume Variables
+
+<ParamField path="VOLUME_ACCESS_KEY" type="string">
+  AWS access key ID for S3 volumes. Required for `s3` and `s3tables` volume types unless using credential provider chain.
+  
+  ```bash
+  export VOLUME_ACCESS_KEY="AKIAIOSFODNN7EXAMPLE"
+  ```
+</ParamField>
+
+<ParamField path="VOLUME_SECRET_KEY" type="string">
+  AWS secret access key for S3 volumes. Required for `s3` and `s3tables` volume types unless using credential provider chain.
+  
+  ```bash
+  export VOLUME_SECRET_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+  ```
+</ParamField>
+
+<ParamField path="VOLUME_AWS_SESSION_TOKEN" type="string">
+  Optional AWS session token for temporary credentials.
+  
+  ```bash
+  export VOLUME_AWS_SESSION_TOKEN="temporary-token"
+  ```
+</ParamField>
+
+### S3 Tables Volume Variables
+
+<ParamField path="VOLUME_ARN" type="string">
+  Amazon S3 Tables bucket ARN. Required for `s3tables` volume type.
+  
+  **Format:** `arn:aws:s3tables:region:account-id:bucket/bucket-name`
+  
+  ```bash
+  export VOLUME_ARN="arn:aws:s3tables:us-east-1:123456789012:bucket/my-table-bucket"
+  ```
+</ParamField>
+
+## Deployment Examples
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  embucket:
+    image: embucket/embucket:latest
+    environment:
+      BUCKET_HOST: "0.0.0.0"
+      BUCKET_PORT: "3000"
+      MAX_CONCURRENCY_LEVEL: "32"
+      MEM_POOL_SIZE_MB: "8192"
+      TRACING_LEVEL: "info"
+      VOLUME_TYPE: "s3"
+      VOLUME_ACCESS_KEY: "${AWS_ACCESS_KEY_ID}"
+      VOLUME_SECRET_KEY: "${AWS_SECRET_ACCESS_KEY}"
+    ports:
+      - "3000:3000"
+```
+
+### Kubernetes ConfigMap
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: embucket-config
+data:
+  BUCKET_HOST: "0.0.0.0"
+  BUCKET_PORT: "3000"
+  MAX_CONCURRENCY_LEVEL: "32"
+  MEM_POOL_SIZE_MB: "8192"
+  MEM_POOL_TYPE: "fair"
+  QUERY_TIMEOUT_SECS: "3600"
+  TRACING_LEVEL: "info"
+  SQL_PARSER_DIALECT: "snowflake"
+```
+
+### Bootstrap S3 Tables Volume
+
+```bash
+export VOLUME_TYPE="s3tables"
+export VOLUME_IDENT="production_bucket"
+export VOLUME_DATABASE="analytics"
+export VOLUME_ARN="arn:aws:s3tables:us-east-1:123456789012:bucket/prod-tables"
+export VOLUME_ACCESS_KEY="AKIAIOSFODNN7EXAMPLE"
+export VOLUME_SECRET_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+embucketd
+```
+
+### Use AWS Credential Provider Chain
+
+When `VOLUME_ACCESS_KEY` and `VOLUME_SECRET_KEY` are not set for S3 Tables volumes, Embucket will use the AWS default credential provider chain:
+
+1. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
+2. Shared config files (`~/.aws/config`, `~/.aws/credentials`)
+3. Web Identity Tokens
+4. ECS (IAM Roles for Tasks) & General HTTP credentials
+5. EC2 IMDSv2
+
+```bash
+export VOLUME_TYPE="s3tables"
+export VOLUME_ARN="arn:aws:s3tables:us-east-1:123456789012:bucket/my-bucket"
+# Credentials will be resolved from AWS credential chain
+embucketd
+```

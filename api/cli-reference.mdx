@@ -1,0 +1,357 @@
+---
+title: CLI Reference
+description: Complete reference for embucketd command-line flags and options
+---
+
+The `embucketd` binary provides comprehensive command-line configuration for running the Embucket server. All flags can also be set via environment variables.
+
+## Usage
+
+```bash
+embucketd [OPTIONS]
+```
+
+## Server Configuration
+
+<ParamField path="--metastore-config" type="path" default="none">
+  Path to YAML config describing volumes/databases to seed the metastore.
+  
+  **Environment variable:** `METASTORE_CONFIG`
+  
+  ```bash
+  embucketd --metastore-config /path/to/config.yaml
+  ```
+</ParamField>
+
+<ParamField path="--host" type="string" default="localhost">
+  Host address to bind the server to.
+  
+  **Environment variable:** `BUCKET_HOST`
+  
+  ```bash
+  embucketd --host 0.0.0.0
+  ```
+</ParamField>
+
+<ParamField path="--port" type="integer" default="3000">
+  Port number to bind the server to.
+  
+  **Environment variable:** `BUCKET_PORT`
+  
+  ```bash
+  embucketd --port 8080
+  ```
+</ParamField>
+
+<ParamField path="--idle-timeout-seconds" type="integer" default="18000">
+  Service idle timeout in seconds (5 hours by default).
+  
+  **Environment variable:** `IDLE_TIMEOUT_SECONDS`
+  
+  ```bash
+  embucketd --idle-timeout-seconds 3600
+  ```
+</ParamField>
+
+## Query Execution
+
+<ParamField path="--max-concurrency-level" type="integer" default="8">
+  Maximum number of queries that can run simultaneously.
+  
+  **Environment variable:** `MAX_CONCURRENCY_LEVEL`
+  
+  ```bash
+  embucketd --max-concurrency-level 16
+  ```
+</ParamField>
+
+<ParamField path="--query-timeout-secs" type="integer" default="1200">
+  Maximum duration in seconds a single query is allowed to run (20 minutes by default).
+  
+  **Environment variable:** `QUERY_TIMEOUT_SECS`
+  
+  ```bash
+  embucketd --query-timeout-secs 600
+  ```
+</ParamField>
+
+<ParamField path="--max-concurrent-table-fetches" type="integer" default="2">
+  The maximum number of concurrent requests to get table details.
+  
+  **Environment variable:** `MAX_CONCURRENT_TABLE_FETCHES`
+  
+  ```bash
+  embucketd --max-concurrent-table-fetches 4
+  ```
+</ParamField>
+
+## Memory Management
+
+<ParamField path="--mem-pool-type" type="enum" default="greedy">
+  Memory pool type for query execution.
+  
+  **Environment variable:** `MEM_POOL_TYPE`
+  
+  **Options:**
+  - `greedy` - Allocates memory aggressively
+  - `fair` - Distributes memory fairly among queries
+  
+  ```bash
+  embucketd --mem-pool-type fair
+  ```
+</ParamField>
+
+<ParamField path="--mem-pool-size-mb" type="integer" default="none">
+  Maximum memory pool size in megabytes. If not set, uses system defaults.
+  
+  **Environment variable:** `MEM_POOL_SIZE_MB`
+  
+  ```bash
+  embucketd --mem-pool-size-mb 4096
+  ```
+</ParamField>
+
+<ParamField path="--mem-enable-track-consumers-pool" type="boolean" default="false">
+  Wrap memory pool with TrackConsumersPool for tracking per-consumer memory usage.
+  
+  **Environment variable:** `MEM_ENABLE_TRACK_CONSUMERS_POOL`
+  
+  ```bash
+  embucketd --mem-enable-track-consumers-pool
+  ```
+</ParamField>
+
+<ParamField path="--disk-pool-size-mb" type="integer" default="none">
+  Maximum disk pool size in megabytes for spilling operations.
+  
+  **Environment variable:** `DISK_POOL_SIZE_MB`
+  
+  ```bash
+  embucketd --disk-pool-size-mb 10240
+  ```
+</ParamField>
+
+<ParamField path="--alloc-tracing" type="boolean" default="false">
+  Enable memory tracing functionality for debugging.
+  
+  **Environment variable:** `ALLOC_TRACING`
+  
+  ```bash
+  embucketd --alloc-tracing
+  ```
+</ParamField>
+
+## Data Formats and Parsing
+
+<ParamField path="--data-format" type="string" default="json">
+  Data serialization format in Snowflake v1 API.
+  
+  **Environment variable:** `DATA_FORMAT`
+  
+  ```bash
+  embucketd --data-format json
+  ```
+</ParamField>
+
+<ParamField path="--sql-parser-dialect" type="string" default="snowflake">
+  SQL parser dialect to use.
+  
+  **Environment variable:** `SQL_PARSER_DIALECT`
+  
+  **Options:** `snowflake`, `postgres`, `mysql`, `generic`
+  
+  ```bash
+  embucketd --sql-parser-dialect postgres
+  ```
+</ParamField>
+
+## Authentication
+
+<ParamField path="--auth-demo-user" type="string" default="embucket">
+  Username for demo authentication mode.
+  
+  **Environment variable:** `AUTH_DEMO_USER`
+  
+  ```bash
+  embucketd --auth-demo-user admin
+  ```
+</ParamField>
+
+<ParamField path="--auth-demo-password" type="string" default="embucket">
+  Password for demo authentication mode.
+  
+  **Environment variable:** `AUTH_DEMO_PASSWORD`
+  
+  ```bash
+  embucketd --auth-demo-password secret123
+  ```
+</ParamField>
+
+<ParamField path="--jwt-secret" type="string" default="none">
+  JWT secret for authentication. This value is sensitive and will be removed from environment after loading.
+  
+  **Environment variable:** `JWT_SECRET`
+  
+  <Warning>Keep this value secret. The environment variable is automatically unset after startup.</Warning>
+  
+  ```bash
+  embucketd --jwt-secret your-secret-key
+  ```
+</ParamField>
+
+## AWS SDK Configuration
+
+<ParamField path="--aws-sdk-connect-timeout-secs" type="integer" default="3">
+  AWS SDK connection timeout in seconds.
+  
+  **Environment variable:** `AWS_SDK_CONNECT_TIMEOUT_SECS`
+  
+  ```bash
+  embucketd --aws-sdk-connect-timeout-secs 5
+  ```
+</ParamField>
+
+<ParamField path="--aws-sdk-operation-timeout-secs" type="integer" default="30">
+  AWS SDK operation timeout in seconds.
+  
+  **Environment variable:** `AWS_SDK_OPERATION_TIMEOUT_SECS`
+  
+  ```bash
+  embucketd --aws-sdk-operation-timeout-secs 60
+  ```
+</ParamField>
+
+<ParamField path="--aws-sdk-operation-attempt-timeout-secs" type="integer" default="10">
+  AWS SDK operation attempt timeout in seconds.
+  
+  **Environment variable:** `AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS`
+  
+  ```bash
+  embucketd --aws-sdk-operation-attempt-timeout-secs 15
+  ```
+</ParamField>
+
+## Iceberg Configuration
+
+<ParamField path="--iceberg-create-table-timeout-secs" type="integer" default="30">
+  Iceberg table creation timeout in seconds.
+  
+  **Environment variable:** `ICEBERG_CREATE_TABLE_TIMEOUT_SECS`
+  
+  ```bash
+  embucketd --iceberg-create-table-timeout-secs 60
+  ```
+</ParamField>
+
+<ParamField path="--iceberg-catalog-timeout-secs" type="integer" default="10">
+  Iceberg catalog operation timeout in seconds.
+  
+  **Environment variable:** `ICEBERG_CATALOG_TIMEOUT_SECS`
+  
+  ```bash
+  embucketd --iceberg-catalog-timeout-secs 20
+  ```
+</ParamField>
+
+## Object Store Configuration
+
+<ParamField path="--object-store-timeout-secs" type="integer" default="10">
+  Object store operation timeout in seconds.
+  
+  **Environment variable:** `OBJECT_STORE_TIMEOUT_SECS`
+  
+  ```bash
+  embucketd --object-store-timeout-secs 30
+  ```
+</ParamField>
+
+<ParamField path="--object-store-connect-timeout-secs" type="integer" default="3">
+  Object store connection timeout in seconds.
+  
+  **Environment variable:** `OBJECT_STORE_CONNECT_TIMEOUT_SECS`
+  
+  ```bash
+  embucketd --object-store-connect-timeout-secs 5
+  ```
+</ParamField>
+
+## Observability
+
+<ParamField path="--tracing-level" type="enum" default="info">
+  Tracing level for logs. Can be overridden by the `RUST_LOG` environment variable.
+  
+  **Environment variable:** `TRACING_LEVEL`
+  
+  **Options:** `off`, `info`, `debug`, `trace`
+  
+  ```bash
+  embucketd --tracing-level debug
+  ```
+</ParamField>
+
+<ParamField path="--tracing-span-processor" type="enum" default="batch-span-processor">
+  Tracing span processor type.
+  
+  **Environment variable:** `span_processor`
+  
+  **Options:**
+  - `batch-span-processor`
+  - `batch-span-processor-experimental-async-runtime`
+  
+  ```bash
+  embucketd --tracing-span-processor batch-span-processor
+  ```
+</ParamField>
+
+<ParamField path="--otel-exporter-otlp-protocol" type="string" default="grpc">
+  OpenTelemetry Exporter Protocol.
+  
+  **Environment variable:** `OTEL_EXPORTER_OTLP_PROTOCOL`
+  
+  ```bash
+  embucketd --otel-exporter-otlp-protocol http
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Server Startup
+
+```bash
+embucketd --host 0.0.0.0 --port 3000
+```
+
+### Production Configuration
+
+```bash
+embucketd \
+  --host 0.0.0.0 \
+  --port 3000 \
+  --metastore-config /etc/embucket/config.yaml \
+  --max-concurrency-level 32 \
+  --mem-pool-size-mb 8192 \
+  --query-timeout-secs 3600 \
+  --tracing-level info
+```
+
+### Using Environment Variables
+
+```bash
+export BUCKET_HOST="0.0.0.0"
+export BUCKET_PORT="3000"
+export MAX_CONCURRENCY_LEVEL="16"
+export MEM_POOL_SIZE_MB="4096"
+export TRACING_LEVEL="debug"
+
+embucketd
+```
+
+### Memory-Optimized Configuration
+
+```bash
+embucketd \
+  --mem-pool-type fair \
+  --mem-pool-size-mb 16384 \
+  --disk-pool-size-mb 51200 \
+  --mem-enable-track-consumers-pool
+```

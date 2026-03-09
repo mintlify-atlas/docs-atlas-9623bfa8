@@ -1,0 +1,427 @@
+---
+title: dbt Integration
+description: Use Embucket as a local Snowflake replacement for dbt development
+---
+
+Embucket provides a wire-compatible Snowflake API, allowing you to run dbt models locally without connecting to a cloud Snowflake instance. This accelerates development workflows and reduces costs.
+
+## Why Use Embucket with dbt?
+
+<CardGroup cols={2}>
+
+<Card title="Faster Development" icon="bolt">
+Run and test dbt models locally without network latency or cloud compute costs.
+</Card>
+
+<Card title="Cost Savings" icon="dollar-sign">
+Develop and test without consuming Snowflake credits during the development phase.
+</Card>
+
+<Card title="Offline Development" icon="wifi-slash">
+Work on your dbt models even without internet connectivity.
+</Card>
+
+<Card title="Consistent Environment" icon="circle-check">
+Ensure reproducible development environments across your team.
+</Card>
+
+</CardGroup>
+
+## Prerequisites
+
+- dbt Core or dbt Cloud CLI installed
+- Embucket running locally or on your network
+- Existing dbt project with Snowflake models
+
+## Profile Configuration
+
+### Basic Setup
+
+Add an Embucket target to your `~/.dbt/profiles.yml`:
+
+```yaml
+my_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: acc.local
+      user: embucket
+      password: embucket
+      role: em.role
+      database: analytics
+      warehouse: em.wh
+      schema: dev
+      threads: 4
+      
+      # Embucket-specific settings
+      host: localhost
+      port: 3000
+      protocol: http
+      region: us-east-2
+```
+
+<Note>
+Use `type: snowflake` - Embucket is compatible with the dbt-snowflake adapter.
+</Note>
+
+### Multiple Environments
+
+Configure both Embucket (local) and Snowflake (production) targets:
+
+```yaml
+my_project:
+  target: local
+  outputs:
+    local:
+      type: snowflake
+      account: acc.local
+      user: embucket
+      password: embucket
+      database: analytics
+      warehouse: em.wh
+      schema: "{{ env_var('USER', 'dev') }}"
+      threads: 4
+      host: localhost
+      port: 3000
+      protocol: http
+      region: us-east-2
+      
+    production:
+      type: snowflake
+      account: your_account
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      database: analytics
+      warehouse: compute_wh
+      schema: public
+      threads: 8
+      region: us-east-1
+```
+
+Switch between environments:
+
+```bash
+# Use local Embucket
+dbt run --target local
+
+# Use Snowflake production
+dbt run --target production
+```
+
+## Running dbt Models
+
+### Standard Workflow
+
+Run your dbt models against Embucket just like you would with Snowflake:
+
+<CodeGroup>
+
+```bash Run All Models
+dbt run
+```
+
+```bash Run Specific Model
+dbt run --select my_model
+```
+
+```bash Run with Tests
+dbt build
+```
+
+```bash Test Models
+dbt test
+```
+
+</CodeGroup>
+
+### Development Workflow Example
+
+Typical development cycle with Embucket:
+
+```bash
+# 1. Start Embucket locally
+docker run --name embucket --rm -p 3000:3000 embucket/embucket
+
+# 2. Create development schema
+dbt run-operation create_schema --args '{"schema_name": "dev_alice"}'
+
+# 3. Run models incrementally during development
+dbt run --select my_new_model+
+
+# 4. Test your changes
+dbt test --select my_new_model+
+
+# 5. Preview results
+snow sql -c local -q "SELECT * FROM analytics.dev_alice.my_new_model LIMIT 10;"
+
+# 6. When ready, deploy to production Snowflake
+dbt run --target production --select my_new_model+
+```
+
+## Supported dbt Features
+
+Embucket supports most dbt-core functionality:
+
+<AccordionGroup>
+
+<Accordion title="Models" icon="diagram-project">
+- SQL models (SELECT statements)
+- Incremental models
+- Ephemeral models
+- Table and view materializations
+- Custom materializations
+</Accordion>
+
+<Accordion title="Tests" icon="vial">
+- Schema tests (unique, not_null, accepted_values, relationships)
+- Data tests (custom SQL tests)
+- Test severity levels
+</Accordion>
+
+<Accordion title="Macros" icon="code">
+- Jinja templating
+- Custom macros
+- dbt built-in macros
+- ref() and source() functions
+</Accordion>
+
+<Accordion title="Seeds" icon="seedling">
+- CSV seed files
+- Seed configuration
+- Data type inference
+</Accordion>
+
+<Accordion title="Snapshots" icon="camera">
+- Timestamp-based snapshots
+- Check-based snapshots
+- Snapshot configurations
+</Accordion>
+
+</AccordionGroup>
+
+## Development Workflow Benefits
+
+### Rapid Iteration
+
+Develop and test models quickly without waiting for cloud resources:
+
+```bash
+# Fast feedback loop
+dbt run --select my_model && dbt test --select my_model
+```
+
+Local execution eliminates network latency and queue times.
+
+### Cost-Efficient Testing
+
+Test complex transformations without incurring cloud compute costs:
+
+```bash
+# Test on sample data locally
+dbt build --select tag:testing
+
+# Deploy to production when confident
+dbt build --target production --select tag:testing
+```
+
+### Collaborative Development
+
+Each developer can run their own Embucket instance:
+
+```yaml
+# profiles.yml
+schema: "dev_{{ env_var('USER') }}"
+```
+
+This prevents schema conflicts and enables parallel development.
+
+## Working with External Data
+
+Embucket can connect to external Iceberg tables and S3 Table Buckets:
+
+### Configure External Catalog
+
+Create `config/metastore.yaml`:
+
+```yaml
+volumes:
+  - ident: lakehouse
+    type: s3
+    region: us-east-2
+    bucket: your-data-lake
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_KEY
+      aws-secret-access-key: YOUR_SECRET
+
+databases:
+  - ident: raw_data
+    volume: lakehouse
+
+schemas:
+  - database: raw_data
+    schema: staging
+```
+
+### Start Embucket with Configuration
+
+```bash
+docker run --name embucket --rm -p 3000:3000 \
+  -v $PWD/config:/app/config \
+  embucket/embucket \
+  ./embucketd --metastore-config config/metastore.yaml
+```
+
+### Reference External Tables in dbt
+
+Create sources in your dbt project:
+
+```yaml
+# models/sources.yml
+version: 2
+
+sources:
+  - name: raw
+    database: raw_data
+    schema: staging
+    tables:
+      - name: customers
+      - name: orders
+```
+
+Reference in models:
+
+```sql
+-- models/staging/stg_customers.sql
+SELECT
+  customer_id,
+  customer_name,
+  created_at
+FROM {{ source('raw', 'customers') }}
+```
+
+## Limitations
+
+While Embucket provides excellent Snowflake compatibility, some differences exist:
+
+<Warning>
+The following Snowflake features have limited or no support in Embucket:
+
+- **Snowflake-specific data types**: VARIANT, GEOGRAPHY may have partial support
+- **Clustering keys**: Syntax accepted but not enforced
+- **Time Travel**: `AT` and `BEFORE` clauses not supported
+- **Tasks and Streams**: Not implemented
+- **External functions**: UDFs calling external services
+- **Stored procedures**: JavaScript/Python procedures
+</Warning>
+
+### Feature Compatibility Matrix
+
+| Feature | Embucket Support | Notes |
+|---------|------------------|-------|
+| SELECT queries | Full | Complete Snowflake SQL dialect |
+| JOINs | Full | All join types supported |
+| Window functions | Full | RANK, ROW_NUMBER, LAG, LEAD, etc. |
+| CTEs | Full | Common table expressions |
+| CREATE TABLE | Full | Standard table creation |
+| CREATE VIEW | Full | View definitions |
+| Date/time functions | Full | dateadd, datediff, date_trunc, etc. |
+| Aggregate functions | Full | SUM, AVG, COUNT, etc. |
+| String functions | Full | CONCAT, SUBSTR, REGEXP, etc. |
+| MERGE INTO | Full | Upsert operations |
+| Transactions | Partial | Basic support |
+| Query tags | Accepted | Tags stored but not used |
+
+## Troubleshooting
+
+<AccordionGroup>
+
+<Accordion title="dbt cannot connect to Embucket">
+**Solution:**
+
+1. Verify Embucket is running: `curl http://localhost:3000/session/v1/login-request`
+2. Check profile configuration in `~/.dbt/profiles.yml`
+3. Test connection: `dbt debug`
+4. Ensure credentials match (default: `embucket/embucket`)
+</Accordion>
+
+<Accordion title="Model runs successfully but data is wrong">
+**Solution:**
+
+1. Check if external catalog is configured correctly
+2. Verify table permissions in metastore config
+3. Run with verbose logging: `dbt run --debug`
+4. Compare query output between Embucket and Snowflake
+</Accordion>
+
+<Accordion title="Incremental models not working as expected">
+**Solution:**
+
+1. Embucket fully supports incremental models
+2. Ensure unique key is properly defined
+3. Check that the merge strategy matches your use case
+4. Verify the incremental logic in your model
+</Accordion>
+
+<Accordion title="Compilation error on Snowflake-specific syntax">
+**Solution:**
+
+1. Check if the feature is in Embucket's limitations list above
+2. Use dbt macros to adapt syntax: `{% if target.name == 'local' %}`
+3. File an issue on Embucket's GitHub for missing features
+</Accordion>
+
+</AccordionGroup>
+
+## Best Practices
+
+<Steps>
+
+<Step title="Use Environment Variables">
+Store credentials in environment variables rather than hardcoding them:
+
+```yaml
+password: "{{ env_var('DBT_PASSWORD', 'embucket') }}"
+```
+</Step>
+
+<Step title="Separate Schemas">
+Use different schemas for each developer to avoid conflicts:
+
+```yaml
+schema: "dev_{{ env_var('USER') }}"
+```
+</Step>
+
+<Step title="Test Locally First">
+Always test changes on Embucket before deploying to production Snowflake.
+</Step>
+
+<Step title="Use dbt Cloud for CI/CD">
+Run Embucket locally for development, but use dbt Cloud or production Snowflake for automated testing and deployment.
+</Step>
+
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="Querying Guide" icon="magnifying-glass" href="/guides/querying">
+Learn about SQL syntax and query patterns
+</Card>
+
+<Card title="External Catalogs" icon="database" href="/catalogs/overview">
+Connect to data lakes and Iceberg tables
+</Card>
+
+<Card title="Snowflake CLI" icon="terminal" href="/guides/snowflake-cli">
+Interact with Embucket via command line
+</Card>
+
+<Card title="Deployment" icon="rocket" href="/deployment/docker">
+Deploy Embucket for your team
+</Card>
+
+</CardGroup>

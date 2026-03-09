@@ -1,0 +1,518 @@
+---
+title: Snowflake REST API
+description: REST API endpoints implementing Snowflake's query and session management protocol
+---
+
+Embucket implements the Snowflake REST API v1, providing compatibility with Snowflake clients and drivers. This API handles authentication, query execution, and session management.
+
+## Base URL
+
+```
+http(s)://host:port/
+```
+
+Example:
+```
+http://localhost:3000/
+```
+
+## Authentication
+
+All endpoints except login require authentication via JWT token in the `Authorization` header.
+
+### POST /session/v1/login-request
+
+Authenticate and obtain a session token.
+
+**Query Parameters:**
+
+<ParamField query="databaseName" type="string">
+  Initial database to connect to.
+</ParamField>
+
+<ParamField query="schemaName" type="string">
+  Initial schema to use.
+</ParamField>
+
+<ParamField query="warehouse" type="string">
+  Warehouse identifier (accepted for compatibility).
+</ParamField>
+
+**Request Body:**
+
+```json
+{
+  "data": {
+    "CLIENT_APP_ID": "SnowflakeConnector",
+    "CLIENT_APP_VERSION": "1.0.0",
+    "SVN_REVISION": null,
+    "ACCOUNT_NAME": "embucket",
+    "LOGIN_NAME": "embucket",
+    "PASSWORD": "embucket",
+    "CLIENT_ENVIRONMENT": {
+      "APPLICATION": "PythonConnector",
+      "OS": "Linux",
+      "OS_VERSION": "5.15.0"
+    },
+    "SESSION_PARAMETERS": {
+      "QUERY_TAG": "analytics"
+    }
+  }
+}
+```
+
+**Request Fields:**
+
+<ParamField path="data.CLIENT_APP_ID" type="string" required>
+  Client application identifier.
+</ParamField>
+
+<ParamField path="data.CLIENT_APP_VERSION" type="string" required>
+  Client application version.
+</ParamField>
+
+<ParamField path="data.SVN_REVISION" type="string">
+  Optional SVN revision.
+</ParamField>
+
+<ParamField path="data.ACCOUNT_NAME" type="string" required>
+  Account name for authentication.
+</ParamField>
+
+<ParamField path="data.LOGIN_NAME" type="string" required>
+  Username for authentication.
+</ParamField>
+
+<ParamField path="data.PASSWORD" type="string" required>
+  Password for authentication.
+</ParamField>
+
+<ParamField path="data.CLIENT_ENVIRONMENT" type="object">
+  Client environment metadata (key-value pairs).
+</ParamField>
+
+<ParamField path="data.SESSION_PARAMETERS" type="object">
+  Session parameters (key-value pairs).
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  },
+  "message": null
+}
+```
+
+<ParamField path="success" type="boolean">
+  Whether the login was successful.
+</ParamField>
+
+<ParamField path="data.token" type="string">
+  JWT token for authenticated requests.
+</ParamField>
+
+<ParamField path="message" type="string">
+  Error message if login failed.
+</ParamField>
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:3000/session/v1/login-request \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "CLIENT_APP_ID": "MyApp",
+      "CLIENT_APP_VERSION": "1.0",
+      "ACCOUNT_NAME": "embucket",
+      "LOGIN_NAME": "embucket",
+      "PASSWORD": "embucket",
+      "CLIENT_ENVIRONMENT": {},
+      "SESSION_PARAMETERS": {}
+    }
+  }'
+```
+
+## Query Execution
+
+### POST /queries/v1/query-request
+
+Execute a SQL query.
+
+**Authentication:** Required (JWT token)
+
+**Query Parameters:**
+
+<ParamField query="requestId" type="uuid" required>
+  Unique identifier for this query request.
+</ParamField>
+
+<ParamField query="retryCount" type="integer">
+  Number of retry attempts (for client retry logic).
+</ParamField>
+
+**Request Body:**
+
+```json
+{
+  "sqlText": "SELECT * FROM my_table LIMIT 10",
+  "asyncExec": false,
+  "querySubmissionTime": 1678901234567
+}
+```
+
+<ParamField path="sqlText" type="string" required>
+  SQL statement to execute.
+</ParamField>
+
+<ParamField path="asyncExec" type="boolean">
+  Whether to execute asynchronously (not fully supported).
+</ParamField>
+
+<ParamField path="querySubmissionTime" type="integer">
+  Client-side submission timestamp in milliseconds.
+</ParamField>
+
+**Response (Success):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "rowtype": [
+      {
+        "name": "id",
+        "database": "analytics",
+        "schema": "public",
+        "table": "my_table",
+        "nullable": false,
+        "type": "INTEGER",
+        "byteLength": null,
+        "length": null,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      }
+    ],
+    "rowset": [
+      [1],
+      [2],
+      [3]
+    ],
+    "total": 3,
+    "returned": 3,
+    "queryResultFormat": "json",
+    "queryId": "01928374-5647-8abc-def0-123456789abc"
+  },
+  "message": null,
+  "code": null
+}
+```
+
+**Response Fields:**
+
+<ParamField path="data.rowtype" type="array">
+  Array of column metadata objects.
+</ParamField>
+
+<ParamField path="data.rowtype[].name" type="string">
+  Column name.
+</ParamField>
+
+<ParamField path="data.rowtype[].type" type="string">
+  Column data type (INTEGER, VARCHAR, TIMESTAMP, etc.).
+</ParamField>
+
+<ParamField path="data.rowtype[].nullable" type="boolean">
+  Whether the column accepts NULL values.
+</ParamField>
+
+<ParamField path="data.rowtype[].database" type="string">
+  Database name.
+</ParamField>
+
+<ParamField path="data.rowtype[].schema" type="string">
+  Schema name.
+</ParamField>
+
+<ParamField path="data.rowtype[].table" type="string">
+  Table name.
+</ParamField>
+
+<ParamField path="data.rowset" type="array">
+  Array of result rows. Each row is an array of values.
+</ParamField>
+
+<ParamField path="data.total" type="integer">
+  Total number of rows in the result set.
+</ParamField>
+
+<ParamField path="data.returned" type="integer">
+  Number of rows returned in this response.
+</ParamField>
+
+<ParamField path="data.queryResultFormat" type="string">
+  Format of the result data ("json" or "arrow").
+</ParamField>
+
+<ParamField path="data.queryId" type="string">
+  Unique identifier for the executed query.
+</ParamField>
+
+**Response (Error):**
+
+```json
+{
+  "success": false,
+  "data": {
+    "errorCode": "002003",
+    "sqlState": "42S02",
+    "queryId": "01928374-5647-8abc-def0-123456789abc"
+  },
+  "message": "Table 'my_table' does not exist",
+  "code": "002003"
+}
+```
+
+<ParamField path="data.errorCode" type="string">
+  Snowflake-compatible error code.
+</ParamField>
+
+<ParamField path="data.sqlState" type="string">
+  SQL state code.
+</ParamField>
+
+<ParamField path="message" type="string">
+  Human-readable error message.
+</ParamField>
+
+**Example:**
+
+```bash
+curl -X POST "http://localhost:3000/queries/v1/query-request?requestId=123e4567-e89b-12d3-a456-426614174000" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "sqlText": "SELECT * FROM my_table LIMIT 10",
+    "asyncExec": false
+  }'
+```
+
+### POST /queries/v1/abort-request
+
+Abort a running query.
+
+**Authentication:** Required (JWT token)
+
+**Request Body:**
+
+```json
+{
+  "sqlText": "SELECT * FROM long_running_query",
+  "requestId": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+<ParamField path="sqlText" type="string" required>
+  SQL text of the query to abort.
+</ParamField>
+
+<ParamField path="requestId" type="uuid" required>
+  Request ID of the query to abort.
+</ParamField>
+
+**Response:**
+
+```json
+null
+```
+
+Returns `null` on success.
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:3000/queries/v1/abort-request \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "sqlText": "SELECT * FROM long_query",
+    "requestId": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+```
+
+## Session Management
+
+### POST /session
+
+Manage or delete a session.
+
+**Authentication:** Required (JWT token)
+
+**Query Parameters:**
+
+<ParamField query="delete" type="boolean" default="false">
+  Whether to delete the session.
+</ParamField>
+
+<ParamField query="requestId" type="string">
+  Optional request identifier.
+</ParamField>
+
+<ParamField query="request_guid" type="string">
+  Optional request GUID.
+</ParamField>
+
+**Response:**
+
+```json
+null
+```
+
+Returns `null` on success.
+
+**Example (Delete Session):**
+
+```bash
+curl -X POST "http://localhost:3000/session?delete=true" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+## Error Codes
+
+Embucket returns Snowflake-compatible error codes:
+
+| Code | SQL State | Description |
+|------|-----------|-------------|
+| 002003 | 42S02 | Table does not exist |
+| 002043 | 42710 | Object already exists |
+| 090106 | 22000 | Invalid data format |
+| 100132 | 22007 | Date/time parsing error |
+| 000606 | 57014 | Query execution aborted |
+
+## Request Headers
+
+### Authentication Header
+
+All authenticated endpoints require:
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+### Content Type
+
+All requests should use:
+
+```http
+Content-Type: application/json
+```
+
+### Compression
+
+The API supports request and response compression:
+
+```http
+Accept-Encoding: gzip
+Content-Encoding: gzip
+```
+
+## Rate Limiting
+
+Rate limiting is controlled by the `--max-concurrency-level` flag:
+
+```bash
+embucketd --max-concurrency-level 32
+```
+
+When the limit is reached, new queries will queue until slots become available.
+
+## Data Formats
+
+The API supports multiple data serialization formats:
+
+### JSON (Default)
+
+Results returned as nested JSON arrays:
+
+```json
+{
+  "data": {
+    "rowset": [
+      [1, "Alice"],
+      [2, "Bob"]
+    ]
+  }
+}
+```
+
+### Arrow (Base64)
+
+Results can be returned as Base64-encoded Apache Arrow:
+
+```json
+{
+  "data": {
+    "rowsetBase64": "QVJST1cxAA==",
+    "queryResultFormat": "arrow"
+  }
+}
+```
+
+Configure via:
+```bash
+embucketd --data-format arrow
+```
+
+## Example Integration
+
+### Python Client
+
+```python
+import requests
+import uuid
+
+class EmbucketClient:
+    def __init__(self, host, port, user, password):
+        self.base_url = f"http://{host}:{port}"
+        self.token = None
+        self._login(user, password)
+    
+    def _login(self, user, password):
+        response = requests.post(
+            f"{self.base_url}/session/v1/login-request",
+            json={
+                "data": {
+                    "CLIENT_APP_ID": "PythonClient",
+                    "CLIENT_APP_VERSION": "1.0",
+                    "ACCOUNT_NAME": "embucket",
+                    "LOGIN_NAME": user,
+                    "PASSWORD": password,
+                    "CLIENT_ENVIRONMENT": {},
+                    "SESSION_PARAMETERS": {}
+                }
+            }
+        )
+        response.raise_for_status()
+        self.token = response.json()["data"]["token"]
+    
+    def execute(self, sql):
+        request_id = str(uuid.uuid4())
+        response = requests.post(
+            f"{self.base_url}/queries/v1/query-request",
+            params={"requestId": request_id},
+            headers={"Authorization": f"Bearer {self.token}"},
+            json={"sqlText": sql, "asyncExec": False}
+        )
+        response.raise_for_status()
+        return response.json()
+
+# Usage
+client = EmbucketClient("localhost", 3000, "embucket", "embucket")
+result = client.execute("SELECT * FROM my_table LIMIT 10")
+print(result["data"]["rowset"])
+```

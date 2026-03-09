@@ -1,0 +1,387 @@
+---
+title: 'AWS Lambda Deployment'
+description: 'Deploy Embucket as a serverless function on AWS Lambda'
+---
+
+## Overview
+
+Embucket can be deployed as an AWS Lambda function, providing a serverless lakehouse solution. This deployment mode is ideal for:
+
+- On-demand query processing
+- Cost-effective workloads with intermittent usage
+- Scalable query endpoints without managing infrastructure
+- Integration with AWS services
+
+## Prerequisites
+
+<Steps>
+  <Step title="Install cargo-lambda">
+    Install the cargo-lambda tool for building and deploying Rust Lambda functions:
+    
+    ```bash
+    cargo install cargo-lambda
+    ```
+  </Step>
+
+  <Step title="Configure AWS credentials">
+    Ensure your AWS credentials are configured:
+    
+    ```bash
+    aws configure
+    ```
+  </Step>
+
+  <Step title="Prepare configuration file">
+    Create a `config/metastore.yaml` file with your catalog configuration (see [Configuration](/deployment/configuration) for details).
+  </Step>
+</Steps>
+
+## Building for Lambda
+
+Build the Embucket Lambda binary for ARM64 architecture (recommended for better price/performance):
+
+```bash
+cargo lambda build --release -p embucket-lambda --arm64
+```
+
+This creates an optimized `bootstrap` binary in the `target/lambda/embucket-lambda/` directory.
+
+<Note>
+  ARM64 (Graviton2) provides better price-performance compared to x86_64. Use `--arm64` flag for ARM builds.
+</Note>
+
+## Deployment
+
+### Basic Deployment
+
+Deploy the function using cargo-lambda:
+
+```bash
+cargo lambda deploy --binary-name bootstrap embucket-lambda
+```
+
+Default deployment configuration:
+- **IAM Role**: `AWSLambdaBasicExecutionRole`
+- **Memory**: 1024 MB
+- **Timeout**: 30 seconds
+- **Includes**: `config/` directory from project root
+
+<Warning>
+  Ensure the `config/metastore.yaml` file exists in the `config/` directory before deployment. This file is packaged with the Lambda function.
+</Warning>
+
+### Deployment with Function URL
+
+Enable a public HTTPS endpoint for your function:
+
+```bash
+cargo lambda deploy --binary-name bootstrap embucket-lambda --enable-function-url
+```
+
+Expected output:
+
+```bash
+✅ function deployed successfully 🎉
+🛠️  binary last compiled 1 minute ago
+🔍 arn: arn:aws:lambda:us-east-2:123456789012:function:embucket-lambda:1
+🎭 version: 1
+🔗 url: https://7mh4xw9n2pqjvf5kzrbt8ycusg6dla3e.lambda-url.us-east-2.on.aws/
+```
+
+The function URL is your Embucket API endpoint.
+
+## Function URL Configuration
+
+### IAM Authentication
+
+For production deployments, configure IAM authentication on the function URL:
+
+```bash
+aws lambda update-function-url-config \
+  --function-name embucket-lambda \
+  --auth-type AWS_IAM
+```
+
+### Public Access
+
+For development or public access:
+
+```bash
+aws lambda add-permission \
+  --function-name embucket-lambda \
+  --statement-id FunctionURLAllowPublicAccess \
+  --action lambda:InvokeFunctionUrl \
+  --principal "*" \
+  --function-url-auth-type NONE
+```
+
+## IAM Role Requirements
+
+Your Lambda function needs appropriate IAM permissions to access AWS resources.
+
+### Basic Execution Role
+
+Minimum permissions for Lambda execution:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:*"
+    }
+  ]
+}
+```
+
+### S3 Access for Iceberg Tables
+
+If using S3 for Iceberg table storage:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::your-bucket-name/*",
+        "arn:aws:s3:::your-bucket-name"
+      ]
+    }
+  ]
+}
+```
+
+### S3 Tables Access
+
+For AWS S3 Table Buckets:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3tables:GetTableBucket",
+        "s3tables:GetTable",
+        "s3tables:GetTableMetadata",
+        "s3tables:ListTables",
+        "s3tables:GetNamespace",
+        "s3tables:ListNamespaces"
+      ],
+      "Resource": "arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket"
+    }
+  ]
+}
+```
+
+## Configuration File Handling
+
+The `config/metastore.yaml` file is packaged with your Lambda deployment.
+
+### Example Configuration
+
+```yaml config/metastore.yaml
+volumes:
+  - ident: demo
+    type: s3-tables
+    database: demo
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_ACCESS_KEY
+      aws-secret-access-key: YOUR_SECRET_KEY
+    arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+```
+
+<Warning>
+  For production, use IAM roles instead of hardcoded credentials. Attach the appropriate IAM role to your Lambda function.
+</Warning>
+
+### Using IAM Roles (Recommended)
+
+Use IAM roles instead of embedding credentials:
+
+```yaml config/metastore.yaml
+volumes:
+  - ident: demo
+    type: s3-tables
+    database: demo
+    arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+```
+
+Ensure the Lambda execution role has the required S3 Tables permissions.
+
+## Environment Variables
+
+Configure Lambda function settings using environment variables:
+
+```bash
+aws lambda update-function-configuration \
+  --function-name embucket-lambda \
+  --environment Variables="{
+    METASTORE_CONFIG=/var/task/config/metastore.yaml,
+    QUERY_TIMEOUT_SECS=300,
+    MAX_CONCURRENCY_LEVEL=4,
+    MEM_POOL_TYPE=greedy,
+    TRACING_LEVEL=info
+  }"
+```
+
+### Common Environment Variables
+
+<ParamField path="METASTORE_CONFIG" type="string" default="/var/task/config/metastore.yaml">
+  Path to metastore configuration file (packaged with deployment)
+</ParamField>
+
+<ParamField path="QUERY_TIMEOUT_SECS" type="number" default="1200">
+  Query execution timeout in seconds (should be less than Lambda timeout)
+</ParamField>
+
+<ParamField path="MAX_CONCURRENCY_LEVEL" type="number" default="8">
+  Maximum concurrent queries per Lambda invocation
+</ParamField>
+
+<ParamField path="MEM_POOL_TYPE" type="string" default="greedy">
+  Memory pool type: `greedy` or `fair`
+</ParamField>
+
+<ParamField path="TRACING_LEVEL" type="string" default="info">
+  Logging level: `off`, `info`, `debug`, or `trace`
+</ParamField>
+
+See the [Configuration](/deployment/configuration) page for all available options.
+
+## Performance Considerations
+
+<CardGroup cols={2}>
+  <Card title="Memory Configuration" icon="memory">
+    Allocate sufficient memory based on query complexity:
+    - **Minimum**: 1024 MB
+    - **Recommended**: 2048-4096 MB
+    - **Large queries**: 8192+ MB
+    
+    ```bash
+    aws lambda update-function-configuration \
+      --function-name embucket-lambda \
+      --memory-size 4096
+    ```
+  </Card>
+
+  <Card title="Timeout Settings" icon="clock">
+    Set appropriate timeout (max 15 minutes for Lambda):
+    
+    ```bash
+    aws lambda update-function-configuration \
+      --function-name embucket-lambda \
+      --timeout 900
+    ```
+    
+    Ensure `QUERY_TIMEOUT_SECS` < Lambda timeout.
+  </Card>
+
+  <Card title="Cold Start" icon="snowflake">
+    First invocation may take 5-10 seconds:
+    - Use provisioned concurrency for latency-sensitive workloads
+    - Consider SnapStart for Java-compatible runtimes
+    - Lambda typically reuses instances for subsequent requests
+  </Card>
+
+  <Card title="Ephemeral Storage" icon="hard-drive">
+    Default 512 MB, increase for large queries:
+    
+    ```bash
+    aws lambda update-function-configuration \
+      --function-name embucket-lambda \
+      --ephemeral-storage Size=2048
+    ```
+  </Card>
+</CardGroup>
+
+## Connecting with Snowflake CLI
+
+Create a connection profile for your Lambda deployment:
+
+```bash
+snow connection add
+```
+
+Enter the following values:
+- **Connection name**: `lambda`
+- **Account**: `acc.lambda`
+- **User**: `embucket`
+- **Password**: `embucket`
+- **Role**: `em.role`
+- **Warehouse**: `em.wh`
+- **Database**: `demo`
+- **Schema**: `public`
+- **Host**: `https://7mh4xw9n2pqjvf5kzrbt8ycusg6dla3e.lambda-url.us-east-2.on.aws`
+- **Region**: `us-east-2`
+
+### Test the Connection
+
+```bash
+snow sql -c lambda -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
+```
+
+Expected output:
+
+```
++----------------------------------+
+| yesterday                        |
+|----------------------------------|
+| 2025-01-02 03:04:05.040000+00:00 |
++----------------------------------+
+```
+
+## Monitoring and Observability
+
+### CloudWatch Logs
+
+Lambda automatically sends logs to CloudWatch Logs:
+
+```bash
+aws logs tail /aws/lambda/embucket-lambda --follow
+```
+
+### OpenTelemetry Integration
+
+Embucket Lambda includes OpenTelemetry support. Configure the OTLP endpoint:
+
+```bash
+aws lambda update-function-configuration \
+  --function-name embucket-lambda \
+  --environment Variables="{
+    OTEL_EXPORTER_OTLP_PROTOCOL=grpc,
+    OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector:4317
+  }"
+```
+
+<Note>
+  The Lambda version includes JSON-formatted logs optimized for CloudWatch Logs Insights.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="sliders" href="/deployment/configuration">
+    Explore all configuration options
+  </Card>
+
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy using Docker containers
+  </Card>
+</CardGroup>

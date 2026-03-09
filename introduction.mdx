@@ -1,0 +1,150 @@
+---
+title: Introduction
+description: Run Snowflake SQL dialect on your data lake in 30 seconds with Embucket
+---
+
+**Run Snowflake SQL dialect on your data lake in 30 seconds. Zero dependencies.**
+
+Embucket is a single binary lakehouse that provides a wire-compatible Snowflake replacement and works with Apache Iceberg open table format. Perfect for simple deployments with the power of proven open source technologies.
+
+## What is Embucket?
+
+Embucket is a streamlined solution for building and managing an open lakehouse platform. It combines the simplicity of a single binary deployment with the power of enterprise-grade query processing, offering:
+
+- **Wire-compatible Snowflake API**: Use your existing Snowflake queries, dbt projects, and BI tools without modification
+- **Apache Iceberg storage**: Your data stays in Apache Iceberg open table format on object storage with no vendor lock-in
+- **Radical simplicity**: Single binary deployment with zero external dependencies
+- **Query-per-node architecture**: Each instance handles complete queries independently for predictable performance
+- **Horizontal scaling**: Add nodes for more throughput without complex orchestration
+
+## Built on Proven Open Source
+
+Embucket leverages battle-tested Apache projects:
+
+<CardGroup cols={2}>
+  <Card title="Apache DataFusion" icon="database">
+    High-performance SQL execution engine with advanced query optimization
+  </Card>
+  <Card title="Apache Iceberg" icon="table">
+    ACID-compliant table format with time travel and schema evolution
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Snowflake SQL Dialect
+
+Run your existing Snowflake SQL queries without modification. Embucket implements Snowflake's SQL dialect, including:
+
+- Date and time functions (`DATEADD`, `DATEDIFF`, `CURRENT_TIMESTAMP`)
+- String manipulation functions
+- Aggregate and window functions
+- CTEs and complex subqueries
+
+### Apache Iceberg Native
+
+Your data remains in the open Apache Iceberg format:
+
+- **No lock-in**: Access your data with any Iceberg-compatible tool
+- **ACID transactions**: Consistent reads and writes across concurrent operations
+- **Time travel**: Query historical versions of your data
+- **Schema evolution**: Add, drop, or modify columns without rewriting data
+
+### Simple Deployment
+
+Embucket is designed for operational simplicity:
+
+- **Single binary**: No complex dependencies or runtime requirements
+- **Multiple deployment modes**: Run on bare metal, Docker, Kubernetes, or AWS Lambda
+- **Minimal configuration**: Start with defaults, configure only what you need
+- **Self-contained**: Embedded metastore for quick starts, external catalogs for production
+
+### Flexible Catalog Support
+
+Connect to your data wherever it lives:
+
+- **AWS S3 Table Buckets**: Native integration with AWS S3 Tables catalog
+- **External Iceberg tables**: Point to existing Iceberg tables in S3, GCS, or Azure
+- **REST catalog**: Standard Iceberg REST catalog protocol support
+
+## Architecture Overview
+
+Embucket follows a simple, scalable architecture:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Client Layer (Snowflake CLI, dbt, BI Tools)           │
+└─────────────────┬───────────────────────────────────────┘
+                  │ Snowflake Wire Protocol
+┌─────────────────▼───────────────────────────────────────┐
+│  Embucket Instance                                       │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Snowflake API Layer                             │   │
+│  └──────────────────┬──────────────────────────────┘   │
+│  ┌──────────────────▼──────────────────────────────┐   │
+│  │ Query Engine (Apache DataFusion)                │   │
+│  └──────────────────┬──────────────────────────────┘   │
+│  ┌──────────────────▼──────────────────────────────┐   │
+│  │ Catalog Provider                                 │   │
+│  └──────────────────┬──────────────────────────────┘   │
+└───────────────────┬─┴──────────────────────────────────┘
+                    │
+┌───────────────────▼─────────────────────────────────────┐
+│  Storage Layer (S3, GCS, Azure)                         │
+│  └─ Apache Iceberg Tables                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Query-Per-Node Model
+
+Each Embucket instance processes complete queries independently:
+
+- **No coordination overhead**: Instances don't need to communicate with each other
+- **Predictable performance**: Query performance is independent of cluster size
+- **Simple scaling**: Add more instances behind a load balancer for higher throughput
+- **Fault isolation**: One instance failure doesn't affect others
+
+## Use Cases
+
+Embucket is ideal for:
+
+<CardGroup cols={2}>
+  <Card title="Data Lake Analytics" icon="chart-line">
+    Run SQL analytics on your data lake without complex infrastructure
+  </Card>
+  <Card title="Snowflake Migration" icon="arrows-rotate">
+    Migrate workloads from Snowflake to open formats while maintaining compatibility
+  </Card>
+  <Card title="Edge Analytics" icon="location-dot">
+    Deploy query engines close to your data with minimal resources
+  </Card>
+  <Card title="Development & Testing" icon="code">
+    Local Snowflake-compatible environment for development and CI/CD
+  </Card>
+</CardGroup>
+
+## Target Audience
+
+Embucket is designed for:
+
+- **Data Engineers**: Building and maintaining data pipelines with Snowflake SQL
+- **Analytics Engineers**: Running dbt projects on open data lake formats
+- **Platform Engineers**: Deploying simple, scalable query engines
+- **Data Teams**: Transitioning from proprietary to open data platforms
+
+## Getting Started
+
+Ready to try Embucket? Choose your path:
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get Embucket running in under 5 minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed installation instructions for all platforms
+  </Card>
+</CardGroup>
+
+## License
+
+Embucket is open source software licensed under the Apache 2.0 License. See the [LICENSE](https://github.com/Embucket/embucket/blob/main/LICENSE) file for details.

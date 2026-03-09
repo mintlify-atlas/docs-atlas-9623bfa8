@@ -1,0 +1,355 @@
+---
+title: External Iceberg Tables
+description: Connect Embucket to existing Apache Iceberg tables on S3 or other storage
+---
+
+## Overview
+
+Embucket can connect to existing Apache Iceberg tables created by other tools like Spark, Trino, Dremio, or Flink. This enables seamless integration with your existing data lake infrastructure.
+
+<Info>
+External Iceberg tables must be on the same storage volume (bucket) defined in your volume configuration. Embucket uses the volume credentials to access table metadata and data files.
+</Info>
+
+## When to Use External Iceberg
+
+Use external Iceberg table configuration when:
+
+- You have existing Iceberg tables from Spark, Trino, or other engines
+- You need to share tables across multiple query engines
+- You want explicit control over which tables are accessible
+- Your tables are not in an S3 Tables catalog
+- You need to query tables created by other systems
+
+## Configuration Structure
+
+External Iceberg configuration requires defining the storage volume and explicitly registering each table:
+
+```yaml
+volumes:
+  - ident: lakehouse
+    type: s3
+    region: us-east-2
+    bucket: YOUR_BUCKET_NAME
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_ACCESS_KEY
+      aws-secret-access-key: YOUR_SECRET_KEY
+
+databases:
+  - ident: demo
+    volume: lakehouse
+
+schemas:
+  - database: demo
+    schema: tpch_10
+
+tables:
+  - database: demo
+    schema: tpch_10
+    table: customer
+    metadata_location: s3://YOUR_BUCKET_NAME/tpch_10/customer/metadata/00001-eea1cccb-38a4-4fe2-8c95-c01dae9d0c60.metadata.json
+  - database: demo
+    schema: tpch_10
+    table: lineitem
+    metadata_location: s3://YOUR_BUCKET_NAME/tpch_10/lineitem/metadata/00001-d777220e-d508-4033-a229-8c4c8d8fe514.metadata.json
+```
+
+## Volume Configuration
+
+### S3 Volume Setup
+
+Define an S3 volume that points to the bucket containing your Iceberg tables:
+
+<ParamField path="ident" type="string" required>
+  Unique identifier for the storage volume. Referenced by databases and tables.
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Must be `s3` for standard S3 storage.
+</ParamField>
+
+<ParamField path="region" type="string" required>
+  AWS region where the S3 bucket is located (e.g., `us-east-2`, `eu-west-1`).
+</ParamField>
+
+<ParamField path="bucket" type="string" required>
+  Name of the S3 bucket containing your Iceberg tables.
+</ParamField>
+
+<ParamField path="credentials" type="object">
+  AWS credentials for accessing the S3 bucket. See [Credentials](#credentials) below.
+</ParamField>
+
+<ParamField path="endpoint" type="string">
+  Custom S3 endpoint URL for S3-compatible storage (MinIO, Ceph, etc.). Must start with `http://` or `https://`.
+</ParamField>
+
+### Alternative Storage Types
+
+Embucket also supports other volume types:
+
+```yaml
+# Local filesystem (development)
+volumes:
+  - ident: local
+    type: file
+    path: /data/lakehouse
+
+# In-memory (testing)
+volumes:
+  - ident: temp
+    type: memory
+```
+
+## Table Registration
+
+Each external Iceberg table must be explicitly registered with its metadata location:
+
+### Required Fields
+
+<ParamField path="database" type="string" required>
+  The database this table belongs to. Must match a database defined in the `databases` section.
+</ParamField>
+
+<ParamField path="schema" type="string" required>
+  The schema this table belongs to. Must match a schema defined in the `schemas` section.
+</ParamField>
+
+<ParamField path="table" type="string" required>
+  The name of the table as it will appear in queries.
+</ParamField>
+
+<ParamField path="metadata_location" type="string" required>
+  Full S3 URI to the Iceberg metadata JSON file. This file contains the table schema, partition spec, and snapshot information.
+</ParamField>
+
+### Finding Metadata Locations
+
+Iceberg metadata files are typically organized like:
+
+```
+s3://bucket/
+└── database_name/
+    └── table_name/
+        ├── data/
+        │   ├── partition1/
+        │   └── partition2/
+        └── metadata/
+            ├── 00000-abc123.metadata.json
+            ├── 00001-def456.metadata.json  ← Latest version
+            └── snap-*.avro
+```
+
+To find the current metadata file:
+
+<Tabs>
+  <Tab title="AWS CLI">
+    ```bash
+    aws s3 ls s3://YOUR_BUCKET/path/to/table/metadata/ \
+      --recursive | sort | tail -1
+    ```
+  </Tab>
+  <Tab title="Spark">
+    ```python
+    # In PySpark
+    spark.sql("DESCRIBE EXTENDED my_table").filter(
+      "col_name = 'Metadata Location'"
+    ).show(truncate=False)
+    ```
+  </Tab>
+  <Tab title="Manual">
+    Navigate to your table's S3 location and look in the `metadata/` folder for the highest numbered `.metadata.json` file.
+  </Tab>
+</Tabs>
+
+## Credentials
+
+### Access Key Authentication
+
+```yaml
+credentials:
+  credential_type: access_key
+  aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+  aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+```
+
+### Required IAM Permissions
+
+Your AWS credentials need read access to the S3 bucket:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::YOUR_BUCKET_NAME",
+        "arn:aws:s3:::YOUR_BUCKET_NAME/*"
+      ]
+    }
+  ]
+}
+```
+
+For write operations (INSERT, UPDATE, DELETE), add:
+
+```json
+"Action": [
+  "s3:GetObject",
+  "s3:PutObject",
+  "s3:DeleteObject",
+  "s3:ListBucket"
+]
+```
+
+## Complete Example
+
+Here's a full configuration for a data lake with multiple tables:
+
+```yaml metastore.yaml
+volumes:
+  - ident: data_lake
+    type: s3
+    region: us-west-2
+    bucket: my-iceberg-tables
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ${AWS_ACCESS_KEY_ID}
+      aws-secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+
+databases:
+  - ident: analytics
+    volume: data_lake
+
+schemas:
+  - database: analytics
+    schema: sales
+  - database: analytics
+    schema: marketing
+
+tables:
+  # Sales schema tables
+  - database: analytics
+    schema: sales
+    table: orders
+    metadata_location: s3://my-iceberg-tables/sales/orders/metadata/00005-xyz789.metadata.json
+  
+  - database: analytics
+    schema: sales
+    table: customers
+    metadata_location: s3://my-iceberg-tables/sales/customers/metadata/00003-abc123.metadata.json
+  
+  # Marketing schema tables
+  - database: analytics
+    schema: marketing
+    table: campaigns
+    metadata_location: s3://my-iceberg-tables/marketing/campaigns/metadata/00001-def456.metadata.json
+```
+
+## Important Constraints
+
+<Warning>
+**Same Bucket Requirement**: All external Iceberg tables must reside in the same S3 bucket specified in the volume configuration. Tables in different buckets require separate volume definitions.
+</Warning>
+
+### Multiple Volumes for Multiple Buckets
+
+If you have tables in different buckets:
+
+```yaml
+volumes:
+  - ident: lake_us_east
+    type: s3
+    region: us-east-1
+    bucket: bucket-us-east
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: KEY1
+      aws-secret-access-key: SECRET1
+  
+  - ident: lake_eu_west
+    type: s3
+    region: eu-west-1
+    bucket: bucket-eu-west
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: KEY2
+      aws-secret-access-key: SECRET2
+
+databases:
+  - ident: us_data
+    volume: lake_us_east
+  - ident: eu_data
+    volume: lake_eu_west
+```
+
+## Querying External Tables
+
+Once registered, query external Iceberg tables using standard SQL:
+
+```sql
+-- Query registered table
+SELECT * FROM demo.tpch_10.customer LIMIT 10;
+
+-- Join multiple tables
+SELECT 
+  c.c_name,
+  c.c_mktsegment,
+  COUNT(l.l_orderkey) as order_count
+FROM demo.tpch_10.customer c
+JOIN demo.tpch_10.lineitem l ON c.c_custkey = l.l_orderkey
+GROUP BY c.c_name, c.c_mktsegment;
+
+-- Use Iceberg time travel
+SELECT * FROM demo.tpch_10.customer
+FOR SYSTEM_TIME AS OF '2024-01-01 00:00:00';
+```
+
+## Metadata Updates
+
+<Note>
+Embucket reads the metadata file specified in the configuration. If the table is updated by another tool (Spark, Trino), you'll need to update the `metadata_location` in your configuration and restart Embucket to see changes.
+</Note>
+
+For dynamic metadata discovery, consider using S3 Tables instead, which automatically tracks metadata changes.
+
+## Troubleshooting
+
+### Table Not Found
+
+If queries fail with "table not found":
+1. Verify the database, schema, and table names match your configuration exactly
+2. Check that schemas are defined before tables that use them
+3. Confirm the database references a valid volume
+
+### Invalid Metadata Location
+
+If Embucket reports invalid metadata:
+1. Verify the S3 URI is correct and accessible
+2. Check that the metadata file exists at the specified location
+3. Ensure credentials have `s3:GetObject` permission
+4. Confirm the file is valid Iceberg metadata JSON
+
+### Metadata Parse Errors
+
+If metadata parsing fails:
+1. Verify the metadata file is from a compatible Iceberg version
+2. Check that the JSON structure is valid
+3. Ensure the file isn't corrupted or truncated
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Write SQL Queries" icon="code" href="/guides/querying">
+    Learn Snowflake SQL syntax
+  </Card>
+  <Card title="Metastore Configuration" icon="book" href="/catalogs/metastore-config">
+    Complete YAML schema reference
+  </Card>
+</CardGroup>

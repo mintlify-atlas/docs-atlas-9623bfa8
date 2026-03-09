@@ -1,0 +1,260 @@
+---
+title: Performance Tuning
+description: Optimize Embucket for production workloads with memory, disk, and concurrency configuration
+---
+
+Embucket provides extensive performance tuning options to optimize query execution for your workload. This guide covers key configuration parameters and best practices.
+
+## Memory Pool Configuration
+
+Memory pools control how query execution allocates and manages memory. Embucket supports two memory pool types:
+
+### Pool Types
+
+<AccordionGroup>
+  <Accordion title="Greedy (Default)">
+    Allows aggressive memory consumption up to the configured limit. Once the pool is full, all consumers are blocked until memory is freed.
+    
+    **Best for:**
+    - Single-query workloads
+    - Development environments
+    - Simpler deployment scenarios
+    
+    **Configuration:**
+    ```bash
+    MEM_POOL_TYPE=greedy
+    ```
+  </Accordion>
+  
+  <Accordion title="Fair">
+    Enforces fair memory usage across all consumers with spill-based control. No single query dominates memory resources.
+    
+    **Best for:**
+    - Concurrent workloads
+    - Production environments with multiple simultaneous queries
+    - Multi-tenant scenarios
+    
+    **Configuration:**
+    ```bash
+    MEM_POOL_TYPE=fair
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Setting Memory Limits
+
+Configure the maximum memory pool size in megabytes:
+
+```bash
+MEM_POOL_SIZE_MB=8192  # 8GB memory limit
+```
+
+<Note>
+If `MEM_POOL_SIZE_MB` is not set, Embucket uses unlimited memory, which may lead to OOM conditions under heavy load.
+</Note>
+
+### Memory Consumer Tracking
+
+Enable detailed per-consumer memory tracking for debugging and optimization:
+
+```bash
+MEM_ENABLE_TRACK_CONSUMERS_POOL=true
+```
+
+This wraps the memory pool with `TrackConsumersPool`, which tracks the top 5 memory consumers. Enable this when troubleshooting memory issues.
+
+<Warning>
+Memory tracking adds overhead. Only enable in production when investigating specific memory problems.
+</Warning>
+
+## Disk Pool for Spilling
+
+When queries exceed available memory, Embucket can spill intermediate results to disk:
+
+```bash
+DISK_POOL_SIZE_MB=10240  # 10GB disk limit for spilling
+```
+
+Spilling is managed by DataFusion's `DiskManager` with `OsTmpDirectory` mode. Embucket automatically creates temporary files in the OS temp directory.
+
+<Tip>
+Set disk pool size to 2-3x your memory pool size for memory-intensive analytical workloads.
+</Tip>
+
+## Concurrency Settings
+
+### Maximum Concurrent Queries
+
+Limit the number of queries that can run simultaneously:
+
+```bash
+MAX_CONCURRENCY_LEVEL=8  # Default: 8
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:52-56`
+
+<Info>
+When the concurrency limit is reached, new queries receive a "Concurrency limit reached" error immediately rather than queuing.
+</Info>
+
+### Query Timeout
+
+Maximum duration a single query is allowed to run:
+
+```bash
+QUERY_TIMEOUT_SECS=1200  # Default: 1200 seconds (20 minutes)
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:58-64`
+
+Queries exceeding this timeout are automatically cancelled with a `QueryTimeout` error.
+
+### Table Fetch Parallelism
+
+Control concurrent metadata requests when fetching table details:
+
+```bash
+MAX_CONCURRENT_TABLE_FETCHES=2  # Default: 2
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:166-170`
+
+Increasing this value speeds up catalog operations but increases load on object stores and Iceberg catalogs.
+
+## AWS SDK Timeout Tuning
+
+### Connection Timeout
+
+Maximum time to establish a connection to AWS services:
+
+```bash
+AWS_SDK_CONNECT_TIMEOUT_SECS=3  # Default: 3 seconds
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:172-178`
+
+### Operation Timeout
+
+Total time allowed for an AWS SDK operation to complete:
+
+```bash
+AWS_SDK_OPERATION_TIMEOUT_SECS=30  # Default: 30 seconds
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:180-186`
+
+### Operation Attempt Timeout
+
+Maximum time for a single attempt of an AWS SDK operation:
+
+```bash
+AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS=10  # Default: 10 seconds
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:188-194`
+
+## Iceberg Timeout Configuration
+
+### Table Operations
+
+```bash
+ICEBERG_CREATE_TABLE_TIMEOUT_SECS=30  # Default: 30 seconds
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:196-202`
+
+### Catalog Operations
+
+```bash
+ICEBERG_CATALOG_TIMEOUT_SECS=10  # Default: 10 seconds
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:204-210`
+
+## Object Store Timeout Configuration
+
+### Read/Write Timeout
+
+```bash
+OBJECT_STORE_TIMEOUT_SECS=10  # Default: 10 seconds
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:212-218`
+
+### Connect Timeout
+
+```bash
+OBJECT_STORE_CONNECT_TIMEOUT_SECS=3  # Default: 3 seconds
+```
+
+**Reference:** `crates/embucketd/src/cli.rs:220-226`
+
+## Best Practices for Production
+
+<CardGroup cols={2}>
+  <Card title="Memory Configuration" icon="memory">
+    - Use **Fair** memory pool for concurrent workloads
+    - Set `MEM_POOL_SIZE_MB` to 60-70% of available RAM
+    - Configure disk spilling at 2-3x memory size
+    - Enable consumer tracking only when debugging
+  </Card>
+  
+  <Card title="Concurrency Tuning" icon="gauge-high">
+    - Set `MAX_CONCURRENCY_LEVEL` based on CPU cores (1-2x core count)
+    - Adjust `QUERY_TIMEOUT_SECS` for your longest queries
+    - Monitor query queue depth and adjust limits
+  </Card>
+  
+  <Card title="Network Timeouts" icon="network-wired">
+    - Increase AWS SDK timeouts for slow networks or large data
+    - Set Iceberg timeouts based on catalog responsiveness
+    - Configure object store timeouts for reliable reads
+  </Card>
+  
+  <Card title="Table Metadata" icon="table">
+    - Increase `MAX_CONCURRENT_TABLE_FETCHES` for catalogs with many tables
+    - Balance between metadata fetch speed and catalog load
+    - Monitor catalog response times
+  </Card>
+</CardGroup>
+
+## Example Production Configuration
+
+Here's a recommended configuration for a production server with 32GB RAM and 16 cores:
+
+```bash
+# Memory configuration
+MEM_POOL_TYPE=fair
+MEM_POOL_SIZE_MB=20480  # 20GB
+DISK_POOL_SIZE_MB=51200  # 50GB
+
+# Concurrency
+MAX_CONCURRENCY_LEVEL=16
+QUERY_TIMEOUT_SECS=3600  # 1 hour
+MAX_CONCURRENT_TABLE_FETCHES=4
+
+# AWS SDK timeouts
+AWS_SDK_CONNECT_TIMEOUT_SECS=5
+AWS_SDK_OPERATION_TIMEOUT_SECS=60
+AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS=20
+
+# Iceberg timeouts
+ICEBERG_CREATE_TABLE_TIMEOUT_SECS=60
+ICEBERG_CATALOG_TIMEOUT_SECS=15
+
+# Object store timeouts
+OBJECT_STORE_TIMEOUT_SECS=30
+OBJECT_STORE_CONNECT_TIMEOUT_SECS=5
+```
+
+## Monitoring Performance
+
+After tuning, monitor these metrics:
+
+- Query execution times
+- Memory usage and spill frequency
+- Concurrency limit rejections
+- Timeout errors
+- AWS SDK operation durations
+
+See [Monitoring](/operations/monitoring) for detailed observability configuration.

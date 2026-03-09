@@ -1,0 +1,608 @@
+---
+title: Querying with Embucket
+description: SQL syntax, supported functions, and query patterns
+---
+
+Embucket implements the Snowflake SQL dialect, providing compatibility with existing Snowflake queries and workflows. This guide covers supported syntax, functions, and query optimization.
+
+## SQL Dialect Overview
+
+Embucket uses the Snowflake SQL dialect powered by Apache DataFusion:
+
+<CardGroup cols={2}>
+
+<Card title="Snowflake Compatible" icon="snowflake">
+Run existing Snowflake queries without modification in most cases.
+</Card>
+
+<Card title="ANSI SQL Core" icon="database">
+Standard SQL operations like SELECT, JOIN, GROUP BY, and CTEs.
+</Card>
+
+<Card title="DataFusion Engine" icon="rocket">
+High-performance query execution with Apache DataFusion.
+</Card>
+
+<Card title="Apache Iceberg" icon="table">
+ACID transactions and schema evolution on your data lake.
+</Card>
+
+</CardGroup>
+
+## Basic Query Syntax
+
+### SELECT Statements
+
+Standard SELECT queries work as expected:
+
+```sql
+-- Simple select
+SELECT 1 as result;
+
+-- Select with WHERE clause
+SELECT 
+  customer_id,
+  customer_name,
+  email
+FROM customers
+WHERE status = 'active';
+
+-- Select with ORDER BY and LIMIT
+SELECT 
+  order_id,
+  order_date,
+  total_amount
+FROM orders
+ORDER BY order_date DESC
+LIMIT 100;
+```
+
+### JOINs
+
+All standard join types are supported:
+
+```sql
+-- INNER JOIN
+SELECT 
+  o.order_id,
+  c.customer_name,
+  o.total_amount
+FROM orders o
+INNER JOIN customers c ON o.customer_id = c.customer_id;
+
+-- LEFT JOIN
+SELECT 
+  c.customer_id,
+  c.customer_name,
+  COUNT(o.order_id) as order_count
+FROM customers c
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+GROUP BY c.customer_id, c.customer_name;
+
+-- Multiple joins
+SELECT 
+  o.order_id,
+  c.customer_name,
+  p.product_name,
+  oi.quantity
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+JOIN order_items oi ON o.order_id = oi.order_id
+JOIN products p ON oi.product_id = p.product_id;
+```
+
+### Common Table Expressions (CTEs)
+
+CTEs make complex queries more readable:
+
+```sql
+WITH monthly_sales AS (
+  SELECT 
+    DATE_TRUNC('month', order_date) as month,
+    SUM(total_amount) as total_sales
+  FROM orders
+  GROUP BY DATE_TRUNC('month', order_date)
+),
+average_monthly AS (
+  SELECT AVG(total_sales) as avg_sales
+  FROM monthly_sales
+)
+SELECT 
+  ms.month,
+  ms.total_sales,
+  am.avg_sales,
+  ms.total_sales - am.avg_sales as variance
+FROM monthly_sales ms
+CROSS JOIN average_monthly am
+ORDER BY ms.month;
+```
+
+## Date and Time Functions
+
+Embucket provides full support for Snowflake date/time functions:
+
+### DATEADD
+
+Add or subtract time intervals:
+
+```sql
+-- Add days
+SELECT dateadd(day, 7, CURRENT_DATE()) as next_week;
+
+-- Subtract months
+SELECT dateadd(month, -3, CURRENT_DATE()) as three_months_ago;
+
+-- Add hours to timestamp
+SELECT dateadd(hour, 2, CURRENT_TIMESTAMP()) as in_two_hours;
+
+-- Supported units: year, quarter, month, week, day, hour, minute, second
+SELECT 
+  dateadd(year, 1, '2024-01-15') as next_year,
+  dateadd(quarter, 2, '2024-01-15') as next_quarter,
+  dateadd(week, 4, '2024-01-15') as four_weeks_later;
+```
+
+### DATEDIFF
+
+Calculate the difference between two dates:
+
+```sql
+-- Days between dates
+SELECT datediff(day, '2024-01-01', '2024-01-31') as days_diff;
+
+-- Months between dates
+SELECT datediff(month, hire_date, CURRENT_DATE()) as months_employed
+FROM employees;
+
+-- Hours between timestamps
+SELECT 
+  order_id,
+  datediff(hour, created_at, shipped_at) as hours_to_ship
+FROM orders
+WHERE shipped_at IS NOT NULL;
+```
+
+### DATE_TRUNC
+
+Truncate timestamps to specific units:
+
+```sql
+-- Truncate to day (removes time)
+SELECT date_trunc(day, CURRENT_TIMESTAMP()) as today;
+
+-- Truncate to month (first day of month)
+SELECT 
+  date_trunc(month, order_date) as order_month,
+  COUNT(*) as order_count
+FROM orders
+GROUP BY date_trunc(month, order_date);
+
+-- Truncate to hour
+SELECT 
+  date_trunc(hour, event_time) as event_hour,
+  COUNT(*) as event_count
+FROM events
+GROUP BY date_trunc(hour, event_time);
+```
+
+### Other Date Functions
+
+```sql
+-- Current date and time
+SELECT 
+  CURRENT_DATE() as today,
+  CURRENT_TIME() as now_time,
+  CURRENT_TIMESTAMP() as now_timestamp;
+
+-- Extract parts of dates
+SELECT 
+  EXTRACT(year FROM order_date) as order_year,
+  EXTRACT(month FROM order_date) as order_month,
+  EXTRACT(day FROM order_date) as order_day
+FROM orders;
+
+-- DATE_PART (alias for EXTRACT)
+SELECT 
+  date_part(year, order_date) as order_year,
+  date_part(week, order_date) as order_week
+FROM orders;
+
+-- Convert to date
+SELECT 
+  TO_DATE('2024-01-15', 'YYYY-MM-DD') as parsed_date,
+  CAST('2024-01-15' AS DATE) as cast_date;
+```
+
+## Aggregate Functions
+
+Standard and advanced aggregations:
+
+```sql
+-- Basic aggregates
+SELECT 
+  COUNT(*) as total_orders,
+  SUM(total_amount) as total_revenue,
+  AVG(total_amount) as avg_order_value,
+  MIN(order_date) as first_order,
+  MAX(order_date) as last_order
+FROM orders;
+
+-- GROUPING_ID for cube/rollup operations
+SELECT 
+  region,
+  product_category,
+  SUM(sales) as total_sales,
+  GROUPING_ID(region, product_category) as grouping_level
+FROM sales
+GROUP BY CUBE(region, product_category);
+
+-- COUNT with conditions
+SELECT 
+  customer_id,
+  COUNT(*) as total_orders,
+  COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_orders,
+  COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_orders
+FROM orders
+GROUP BY customer_id;
+
+-- Statistical aggregates
+SELECT 
+  product_id,
+  AVG(price) as avg_price,
+  STDDEV(price) as price_stddev,
+  VARIANCE(price) as price_variance
+FROM product_prices
+GROUP BY product_id;
+```
+
+## Window Functions
+
+Perform calculations across rows:
+
+```sql
+-- Row numbering
+SELECT 
+  customer_id,
+  order_date,
+  total_amount,
+  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date) as order_number
+FROM orders;
+
+-- Ranking
+SELECT 
+  product_name,
+  sales_amount,
+  RANK() OVER (ORDER BY sales_amount DESC) as sales_rank,
+  DENSE_RANK() OVER (ORDER BY sales_amount DESC) as dense_sales_rank
+FROM product_sales;
+
+-- Moving averages
+SELECT 
+  order_date,
+  total_amount,
+  AVG(total_amount) OVER (
+    ORDER BY order_date 
+    ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+  ) as moving_avg_7day
+FROM orders;
+
+-- LAG and LEAD
+SELECT 
+  order_date,
+  total_sales,
+  LAG(total_sales, 1) OVER (ORDER BY order_date) as previous_day_sales,
+  LEAD(total_sales, 1) OVER (ORDER BY order_date) as next_day_sales
+FROM daily_sales;
+```
+
+## String Functions
+
+Text manipulation and pattern matching:
+
+```sql
+-- String concatenation
+SELECT 
+  first_name || ' ' || last_name as full_name,
+  CONCAT(first_name, ' ', last_name) as full_name_alt
+FROM customers;
+
+-- String operations
+SELECT 
+  UPPER(email) as email_upper,
+  LOWER(customer_name) as name_lower,
+  LENGTH(description) as desc_length,
+  SUBSTR(phone, 1, 3) as area_code
+FROM customers;
+
+-- Pattern matching with LIKE
+SELECT *
+FROM products
+WHERE product_name LIKE '%laptop%';
+
+-- Pattern matching with REGEXP
+SELECT *
+FROM customers
+WHERE email REGEXP '^[a-z0-9]+@[a-z0-9]+\.[a-z]{2,}$';
+
+-- RLIKE (alias for REGEXP)
+SELECT *
+FROM logs
+WHERE message RLIKE 'ERROR|FATAL';
+```
+
+## Advanced Query Patterns
+
+### PIVOT and UNPIVOT
+
+Transform data between rows and columns:
+
+```sql
+-- PIVOT: Convert rows to columns
+SELECT *
+FROM (
+  SELECT product_category, month, sales
+  FROM monthly_sales
+)
+PIVOT (
+  SUM(sales)
+  FOR month IN ('Jan', 'Feb', 'Mar', 'Apr')
+) as pivoted_sales;
+
+-- UNPIVOT: Convert columns to rows
+SELECT *
+FROM yearly_sales
+UNPIVOT (
+  sales FOR quarter IN (q1, q2, q3, q4)
+) as unpivoted_sales;
+```
+
+### MERGE INTO
+
+Upsert operations (insert or update):
+
+```sql
+MERGE INTO customers target
+USING customer_updates source
+ON target.customer_id = source.customer_id
+WHEN MATCHED THEN
+  UPDATE SET 
+    target.email = source.email,
+    target.updated_at = CURRENT_TIMESTAMP()
+WHEN NOT MATCHED THEN
+  INSERT (customer_id, email, created_at)
+  VALUES (source.customer_id, source.email, CURRENT_TIMESTAMP());
+```
+
+### FLATTEN (Table Functions)
+
+Work with nested data structures:
+
+```sql
+-- Flatten array columns
+SELECT 
+  order_id,
+  f.value as item_id
+FROM orders,
+LATERAL FLATTEN(input => items) f;
+```
+
+## Query Execution
+
+### EXPLAIN
+
+View query execution plans:
+
+```sql
+-- Show logical plan
+EXPLAIN SELECT * FROM orders WHERE order_date > '2024-01-01';
+
+-- Show physical plan with execution stats
+EXPLAIN ANALYZE SELECT 
+  customer_id,
+  COUNT(*) as order_count
+FROM orders
+GROUP BY customer_id;
+
+-- Verbose output
+EXPLAIN VERBOSE SELECT * FROM large_table WHERE id = 12345;
+```
+
+### Query Results
+
+Results are returned in Snowflake-compatible format:
+
+- Column names are case-sensitive as defined
+- Data types match Snowflake conventions
+- NULL values are properly handled
+- Timestamps include timezone information
+
+## Performance Tips
+
+<CardGroup cols={2}>
+
+<Card title="Use Filters Early" icon="filter">
+Apply WHERE clauses to reduce data scanned:
+```sql
+SELECT * FROM large_table 
+WHERE date >= '2024-01-01'
+```
+</Card>
+
+<Card title="Limit Result Sets" icon="list-ol">
+Use LIMIT for exploration:
+```sql
+SELECT * FROM customers LIMIT 100
+```
+</Card>
+
+<Card title="Efficient JOINs" icon="link">
+Join on indexed columns when possible and filter before joining.
+</Card>
+
+<Card title="Aggregate Wisely" icon="chart-bar">
+Pre-aggregate in subqueries or CTEs for complex calculations.
+</Card>
+
+</CardGroup>
+
+### Optimization Examples
+
+<CodeGroup>
+
+```sql Less Efficient
+-- Filtering after join
+SELECT o.*, c.*
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE o.order_date > '2024-01-01';
+```
+
+```sql More Efficient
+-- Filter before join
+WITH recent_orders AS (
+  SELECT *
+  FROM orders
+  WHERE order_date > '2024-01-01'
+)
+SELECT ro.*, c.*
+FROM recent_orders ro
+JOIN customers c ON ro.customer_id = c.customer_id;
+```
+
+</CodeGroup>
+
+## Supported vs. Limited Features
+
+### Fully Supported
+
+<Check>Standard SELECT, INSERT, UPDATE, DELETE</Check>
+<Check>JOINs (INNER, LEFT, RIGHT, FULL, CROSS)</Check>
+<Check>Subqueries and CTEs</Check>
+<Check>Window functions</Check>
+<Check>Aggregate functions</Check>
+<Check>Date/time functions (dateadd, datediff, etc.)</Check>
+<Check>String functions</Check>
+<Check>CASE expressions</Check>
+<Check>UNION, INTERSECT, EXCEPT</Check>
+<Check>CREATE TABLE, VIEW</Check>
+<Check>ALTER TABLE</Check>
+<Check>MERGE INTO</Check>
+
+### Limited or Not Supported
+
+<Warning>Time Travel (AT, BEFORE)</Warning>
+<Warning>VARIANT data type operations</Warning>
+<Warning>Snowflake tasks and streams</Warning>
+<Warning>External functions</Warning>
+<Warning>Stored procedures</Warning>
+<Warning>User-defined functions (UDFs)</Warning>
+
+## Troubleshooting Queries
+
+<AccordionGroup>
+
+<Accordion title="Query returns unexpected NULL values">
+**Solution:**
+
+1. Check JOIN conditions - use LEFT JOIN if you expect missing matches
+2. Verify data types match between joined columns
+3. Use COALESCE to provide default values:
+   ```sql
+   SELECT COALESCE(column_name, 'default_value') FROM table
+   ```
+</Accordion>
+
+<Accordion title="Date/time functions return errors">
+**Solution:**
+
+1. Ensure date strings are properly formatted: `'YYYY-MM-DD'`
+2. Cast strings to DATE or TIMESTAMP explicitly:
+   ```sql
+   CAST('2024-01-15' AS DATE)
+   ```
+3. Use TO_DATE with format specifiers:
+   ```sql
+   TO_DATE('01/15/2024', 'MM/DD/YYYY')
+   ```
+</Accordion>
+
+<Accordion title="Syntax error on valid Snowflake query">
+**Solution:**
+
+1. Check if the feature is in Embucket's limitations list
+2. Review error message for specific syntax issue
+3. Simplify the query to isolate the problem
+4. Report unsupported syntax on GitHub issues
+</Accordion>
+
+<Accordion title="Query is slow">
+**Solution:**
+
+1. Use EXPLAIN ANALYZE to see execution plan
+2. Add WHERE clauses to filter early
+3. Check if joins are on appropriate columns
+4. Consider pre-aggregating data in CTEs
+5. Use LIMIT for exploratory queries
+</Accordion>
+
+</AccordionGroup>
+
+## Common Query Patterns
+
+### Deduplication
+
+```sql
+-- Keep latest record per customer
+WITH ranked AS (
+  SELECT 
+    *,
+    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY updated_at DESC) as rn
+  FROM customer_updates
+)
+SELECT * FROM ranked WHERE rn = 1;
+```
+
+### Running Totals
+
+```sql
+SELECT 
+  order_date,
+  daily_sales,
+  SUM(daily_sales) OVER (ORDER BY order_date) as running_total
+FROM daily_sales
+ORDER BY order_date;
+```
+
+### Gap Detection
+
+```sql
+SELECT 
+  order_id,
+  order_date,
+  LEAD(order_date) OVER (ORDER BY order_date) as next_order_date,
+  datediff(day, order_date, LEAD(order_date) OVER (ORDER BY order_date)) as days_gap
+FROM orders
+WHERE datediff(day, order_date, LEAD(order_date) OVER (ORDER BY order_date)) > 7;
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="Snowflake CLI" icon="terminal" href="/guides/snowflake-cli">
+Execute queries from the command line
+</Card>
+
+<Card title="dbt Integration" icon="diagram-project" href="/guides/dbt-integration">
+Run dbt models against Embucket
+</Card>
+
+<Card title="External Catalogs" icon="database" href="/catalogs/overview">
+Query data from S3 and Iceberg tables
+</Card>
+
+<Card title="API Reference" icon="code" href="/api/snowflake-rest-api">
+Programmatic query execution via REST API
+</Card>
+
+</CardGroup>

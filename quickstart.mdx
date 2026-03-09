@@ -1,80 +1,225 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get Embucket running and execute your first Snowflake SQL query in under 5 minutes
 ---
 
-## Get started in three steps
+This quickstart guide will have you running Embucket and executing Snowflake SQL queries in under 5 minutes.
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+## Prerequisites
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+This quickstart uses Docker for the fastest setup. Make sure you have Docker installed and running on your system.
 </Note>
+
+If you prefer other installation methods, see the [Installation](/installation) guide.
+
+## Start Embucket
+
+<Steps>
+  <Step title="Run the Embucket container">
+    Start Embucket using Docker:
+
+    ```bash
+    docker run --name embucket --rm -p 3000:3000 embucket/embucket
+    ```
+
+    This command:
+    - Downloads the Embucket image (if not already cached)
+    - Starts the server on port 3000
+    - Runs with default configuration suitable for local development
+
+    <Info>
+    The server starts immediately with an embedded metastore. You should see log output indicating the server is ready.
+    </Info>
+  </Step>
+
+  <Step title="Install Snowflake CLI">
+    Install the Snowflake CLI to interact with Embucket:
+
+    ```bash
+    pip install snowflake-cli
+    ```
+
+    <Tip>
+    If you already have the Snowflake CLI installed, you can skip this step.
+    </Tip>
+  </Step>
+
+  <Step title="Configure connection to Embucket">
+    Find your Snowflake CLI config file path:
+
+    ```bash
+    snow --info | grep "config_file_path" -A 1
+    ```
+
+    Set the config path:
+
+    ```bash
+    CONFIG=<your_config_file_path>
+    ```
+
+    Add the local Embucket connection configuration:
+
+    ```bash
+    echo '
+    [connections.local]
+    host = "localhost"
+    region = "us-east-2"
+    port = 3000
+    protocol = "http"
+    database = "embucket"
+    schema = "public"
+    warehouse = "em.wh"
+    password = "embucket"
+    account = "acc.local"
+    user = "embucket"
+    ' >> $CONFIG
+    ```
+
+    <Info>
+    These default credentials work out of the box for local development. For production deployments, see the [Configuration](/deployment/configuration) guide.
+    </Info>
+  </Step>
+
+  <Step title="Test the connection">
+    Verify the connection to Embucket:
+
+    ```bash
+    snow connection test -c local
+    ```
+
+    Expected output:
+
+    ```bash
+    +-----------------------------+
+    | key             | value     |
+    |-----------------+-----------|
+    | Connection name | local     |
+    | Status          | OK        |
+    | Host            | localhost |
+    | Account         | acc       |
+    | User            | embucket  |
+    | Role            | not set   |
+    | Database        | embucket  |
+    | Warehouse       | em.wh     |
+    +-----------------------------+
+    ```
+
+    <Note>
+    If you see `Status | OK`, your connection is configured correctly!
+    </Note>
+  </Step>
+
+  <Step title="Run your first query">
+    Execute a Snowflake SQL query against Embucket:
+
+    ```bash
+    snow sql -c local -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
+    ```
+
+    Expected output:
+
+    ```bash
+    +----------------------------------+
+    | yesterday                        |
+    |----------------------------------|
+    | 2025-01-02 03:04:05.040000+00:00 |
+    +----------------------------------+
+    ```
+
+    <Tip>
+    Try more Snowflake SQL functions like `DATEDIFF`, `CONCAT`, or complex queries with CTEs!
+    </Tip>
+  </Step>
+</Steps>
+
+## Verification
+
+You've successfully:
+
+- ✅ Started an Embucket instance
+- ✅ Configured the Snowflake CLI to connect to Embucket
+- ✅ Executed a Snowflake SQL query with date functions
+
+**Congratulations!** You're now running Snowflake SQL dialect against a local Embucket instance.
+
+## Try More Queries
+
+Now that you have Embucket running, try some more queries:
+
+### Basic SELECT
+
+```sql
+snow sql -c local -q "SELECT 'Hello, Embucket!' as message;"
+```
+
+### Date and Time Functions
+
+```sql
+snow sql -c local -q "
+SELECT 
+  current_timestamp() as now,
+  dateadd(day, 7, current_date()) as next_week,
+  datediff(day, '2024-01-01', current_date()) as days_since_new_year;
+"
+```
+
+### String Functions
+
+```sql
+snow sql -c local -q "
+SELECT 
+  concat('Embu', 'cket') as name,
+  upper('snowflake sql') as dialect,
+  length('Apache Iceberg') as length;
+"
+```
+
+## Next Steps
+
+Now that you have Embucket running locally, explore more capabilities:
+
+<CardGroup cols={2}>
+  <Card title="Connect to External Catalogs" icon="database" href="/catalogs/overview">
+    Connect to AWS S3 Table Buckets or external Iceberg tables
+  </Card>
+  <Card title="Create Tables" icon="table" href="/guides/querying">
+    Create and manage Iceberg tables with Snowflake SQL
+  </Card>
+  <Card title="Integration with dbt" icon="code-branch" href="/guides/dbt-integration">
+    Run your dbt projects against Embucket
+  </Card>
+  <Card title="Production Deployment" icon="server" href="/deployment/docker">
+    Deploy Embucket to production environments
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Connection Refused
+
+If you see connection refused errors:
+
+- Verify the Docker container is running: `docker ps`
+- Check that port 3000 is not in use by another service
+- Ensure you're using `protocol = "http"` in the connection config (not `https`)
+
+### CLI Not Found
+
+If the `snow` command is not found:
+
+- Ensure Python pip is installed
+- Try reinstalling: `pip install --upgrade snowflake-cli`
+- Verify your PATH includes Python's bin directory
+
+### Configuration Issues
+
+If the connection test fails:
+
+- Double-check the config file path: `snow --info`
+- Verify the configuration was added correctly: `cat $CONFIG`
+- Ensure the `[connections.local]` section is properly formatted
+
+<Warning>
+For production deployments, never use default credentials. See the [Security](/guides/security) guide for best practices.
+</Warning>

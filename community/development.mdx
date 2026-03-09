@@ -1,0 +1,284 @@
+---
+title: Development Guide
+description: Set up your development environment, build from source, and learn Embucket's coding standards
+---
+
+## Getting Started
+
+This guide covers everything you need to know to start developing Embucket, from setting up your environment to understanding our coding conventions.
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Rust Toolchain" icon="rust">
+    Install Rust and Cargo from [rustup.rs](https://rustup.rs)
+  </Card>
+  <Card title="Git" icon="git">
+    Version control system for cloning the repository
+  </Card>
+</CardGroup>
+
+## Build from Source
+
+Follow these steps to build Embucket from source:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/Embucket/embucket.git
+    cd embucket
+    ```
+  </Step>
+  
+  <Step title="Build the project">
+    Build the project using Cargo:
+    ```bash
+    cargo build
+    ```
+    
+    For a release build with optimizations:
+    ```bash
+    cargo build --release
+    ```
+  </Step>
+  
+  <Step title="Run Embucket">
+    Run the embucketd daemon:
+    ```bash
+    ./target/debug/embucketd
+    ```
+    
+    Or for release builds:
+    ```bash
+    ./target/release/embucketd
+    ```
+  </Step>
+</Steps>
+
+## Running Tests
+
+<Tip>
+Always run tests before submitting a pull request to ensure your changes don't break existing functionality.
+</Tip>
+
+Run the test suite:
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests for a specific package
+cargo test -p <package-name>
+
+# Run tests with output
+cargo test -- --nocapture
+```
+
+## Building for AWS Lambda
+
+Embucket can be deployed as an AWS Lambda function. To build for Lambda:
+
+<Steps>
+  <Step title="Install cargo-lambda">
+    ```bash
+    cargo install cargo-lambda
+    ```
+  </Step>
+  
+  <Step title="Build for Lambda">
+    ```bash
+    cargo lambda build --release -p embucket-lambda --arm64
+    ```
+  </Step>
+  
+  <Step title="Deploy to AWS">
+    Make sure your configuration file exists in the `config` directory (e.g., `config/metastore.yaml`).
+    
+    ```bash
+    cargo lambda deploy --binary-name bootstrap embucket-lambda
+    ```
+    
+    To enable function URL access:
+    ```bash
+    cargo lambda deploy --binary-name bootstrap embucket-lambda --enable-function-url
+    ```
+  </Step>
+</Steps>
+
+<Info>
+Read the [cargo-lambda documentation](https://www.cargo-lambda.info/commands/deploy.html#function-urls) for more details on configuring IAM roles and function URLs.
+</Info>
+
+## Coding Standards
+
+Embucket follows strict coding conventions to ensure code quality and consistency across the codebase.
+
+### Design Conventions
+
+<CardGroup cols={2}>
+  <Card title="Error Definitions" icon="triangle-exclamation">
+    Define errors with display messages in dedicated `errors.rs` files. Avoid inlining error texts outside of those files.
+  </Card>
+  <Card title="Error Types" icon="code">
+    Define `Error` enum and `Result<T>` types per crate, with public visibility.
+  </Card>
+  <Card title="API Error Handling" icon="plug">
+    Implement `IntoResponse` trait for top-level error for API crates.
+  </Card>
+  <Card title="Error Logging" icon="file-lines">
+    Errors in logs and tracing spans/events should include an error stack trace.
+  </Card>
+</CardGroup>
+
+### Error Handling with Snafu
+
+Embucket uses the [Snafu](https://docs.rs/snafu) error library for consistent error handling across the codebase, along with `error_stack_trace::debug` proc macro for enabling error stack traces.
+
+#### Error Construction and Propagation
+
+<AccordionGroup>
+  <Accordion title="Basic Error Definition">
+    Derive from `Snafu` and use the `error_stack_trace::debug` proc macro when defining error enums:
+    
+    ```rust
+    #[derive(Snafu)]
+    #[error_stack_trace::debug]
+    pub enum Error {
+        // Error variants here
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Restricting Selector Visibility">
+    Restrict generated Snafu selectors' visibility to crate level:
+    
+    ```rust
+    #[snafu(visibility(pub(crate)))]
+    ```
+  </Accordion>
+  
+  <Accordion title="Error Conversion Helpers">
+    Use Snafu's helpers for implicit error conversions:
+    
+    - `.context(...)` - also supports chaining
+    - `.build()`
+    - `.fail()`
+    - `.into_error()`
+    
+    These are preferred over `.map_err(...)` which is considered an anti-pattern due to loss of context and less ergonomic traceability.
+  </Accordion>
+</AccordionGroup>
+
+#### Special Error Cases
+
+<Tabs>
+  <Tab title="Non-Snafu Foreign Errors">
+    When nesting a non-Snafu foreign error, rename its field from `source` to `error` and add `#[snafu(source)]`:
+    
+    ```rust
+    #[snafu(source)]
+    error: ObjectStoreError,
+    ```
+  </Tab>
+  
+  <Tab title="Boxing Large Errors">
+    When `clippy::result_large_err` is triggered, box the error variant:
+    
+    ```rust
+    #[snafu(source(from(S3tablesError, Box::new)))]
+    source: Box<S3tablesError>,
+    ```
+    
+    <Note>
+    With Snafu, most use cases do not require manual boxing or unboxing. Let Snafu manage implicit conversions where possible.
+    </Note>
+  </Tab>
+  
+  <Tab title="Transparent Errors">
+    Define transparent error variant to re-use context and display message from the underlying error:
+    
+    ```rust
+    #[snafu(transparent)]
+    error: SomeError,
+    ```
+    
+    No context selectors are generated for transparent errors. No `.context(...)` call can be used, but it still supports implicit `.into()` conversion when used with `?`.
+  </Tab>
+</Tabs>
+
+<Warning>
+Avoid constructing errors manually except in rare edge cases (e.g., boxed, non-Snafu, or external errors). Always document the reason when doing so.
+</Warning>
+
+### Error Propagation Best Practices
+
+1. **Use the `?` operator** for implicit error conversions when propagating errors
+2. **Avoid `.map_err(...)`** - it's generally considered an anti-pattern
+3. **Chain context** when errors pass through multiple layers to provide better error messages
+4. **Include stack traces** by using the `error_stack_trace::debug` proc macro
+
+## Project Architecture
+
+Embucket is built on proven open source technologies:
+
+<CardGroup cols={2}>
+  <Card title="Apache DataFusion" icon="database" href="https://datafusion.apache.org/">
+    Powers SQL execution engine
+  </Card>
+  <Card title="Apache Iceberg" icon="cube" href="https://iceberg.apache.org/">
+    Provides ACID table metadata and storage format
+  </Card>
+</CardGroup>
+
+### Key Features
+
+- **Snowflake SQL dialect and API**: Wire-compatible with existing Snowflake queries, dbt projects, and BI tools
+- **Apache Iceberg storage**: Data stays in Apache Iceberg format on object storage with no lock-in
+- **Single binary deployment**: Radical simplicity in deployment
+- **Query-per-node**: Each instance handles complete queries independently
+- **Horizontal scaling**: Add nodes for more throughput
+
+## Development Workflow
+
+<Steps>
+  <Step title="Discuss your changes">
+    Before making significant changes, discuss them with the maintainers via [GitHub Discussions](https://github.com/Embucket/embucket/discussions) or by opening an issue.
+  </Step>
+  
+  <Step title="Create a feature branch">
+    Create a new branch for your feature or bug fix:
+    ```bash
+    git checkout -b issueID/feature-name
+    ```
+  </Step>
+  
+  <Step title="Make your changes">
+    Follow the coding conventions outlined above. Write tests for new functionality.
+  </Step>
+  
+  <Step title="Run tests and checks">
+    Ensure all tests pass and code follows conventions:
+    ```bash
+    cargo test
+    cargo clippy
+    cargo fmt -- --check
+    ```
+  </Step>
+  
+  <Step title="Submit a pull request">
+    See the [Contributing Guide](/community/contributing#pull-request-process) for detailed PR submission instructions.
+  </Step>
+</Steps>
+
+## Getting Help
+
+If you need help with development:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Discussions" icon="comments" href="https://github.com/Embucket/embucket/discussions">
+    Ask questions and get help from the community
+  </Card>
+  <Card title="Contributing Guide" icon="book" href="/community/contributing">
+    Review the full contributing guidelines
+  </Card>
+</CardGroup>

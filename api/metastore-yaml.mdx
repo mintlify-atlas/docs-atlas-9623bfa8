@@ -1,0 +1,453 @@
+---
+title: Metastore YAML Configuration
+description: Complete schema reference for metastore configuration files
+---
+
+The metastore configuration file defines volumes, databases, schemas, and tables to bootstrap when Embucket starts. This YAML file is specified via the `--metastore-config` flag or `METASTORE_CONFIG` environment variable.
+
+## Schema Structure
+
+```yaml
+volumes:
+  - ident: string
+    type: s3 | s3tables | file | memory
+    database: string (optional)
+    should_refresh: boolean (optional)
+    # type-specific fields below
+
+databases:
+  - ident: string
+    volume: string
+    should_refresh: boolean (optional)
+
+schemas:
+  - database: string
+    schema: string
+
+tables:
+  - database: string
+    schema: string
+    table: string
+    metadata_location: string
+```
+
+## Volumes
+
+Volumes define storage backends for Iceberg tables.
+
+<ParamField path="volumes[].ident" type="string" required>
+  Unique identifier for the volume.
+  
+  ```yaml
+  ident: my_s3_bucket
+  ```
+</ParamField>
+
+<ParamField path="volumes[].type" type="enum" required>
+  Volume type.
+  
+  **Options:** `s3`, `s3tables`, `file`, `memory`
+  
+  ```yaml
+  type: s3
+  ```
+</ParamField>
+
+<ParamField path="volumes[].database" type="string">
+  Optional database name to auto-create for this volume.
+  
+  ```yaml
+  database: analytics
+  ```
+</ParamField>
+
+<ParamField path="volumes[].should_refresh" type="boolean" default="false">
+  Whether to refresh the volume metadata on startup.
+  
+  ```yaml
+  should_refresh: true
+  ```
+</ParamField>
+
+### S3 Volume
+
+<ParamField path="region" type="string">
+  AWS region for the S3 bucket.
+  
+  ```yaml
+  region: us-east-1
+  ```
+</ParamField>
+
+<ParamField path="bucket" type="string">
+  S3 bucket name. Must contain only alphanumeric characters, hyphens, or underscores.
+  
+  ```yaml
+  bucket: my-data-bucket
+  ```
+</ParamField>
+
+<ParamField path="endpoint" type="string">
+  Custom S3 endpoint URL. Must start with `http://` or `https://`.
+  
+  ```yaml
+  endpoint: https://s3.amazonaws.com
+  ```
+</ParamField>
+
+<ParamField path="credentials" type="object" required>
+  AWS credentials object.
+  
+  ```yaml
+  credentials:
+    credential_type: access_key
+    aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+    aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  ```
+</ParamField>
+
+#### S3 Credentials
+
+**Access Key Credentials:**
+
+<ParamField path="credential_type" type="string" required>
+  Must be `access_key` for access key credentials.
+</ParamField>
+
+<ParamField path="aws-access-key-id" type="string" required>
+  AWS access key ID (20 character alphanumeric string).
+</ParamField>
+
+<ParamField path="aws-secret-access-key" type="string" required>
+  AWS secret access key (40 character Base64-like string).
+</ParamField>
+
+<ParamField path="aws-session-token" type="string">
+  Optional AWS session token for temporary credentials.
+</ParamField>
+
+**Token Credentials:**
+
+<ParamField path="credential_type" type="string" required>
+  Must be `token` for token-based credentials.
+</ParamField>
+
+### S3 Tables Volume
+
+<ParamField path="arn" type="string" required>
+  Amazon S3 Tables bucket ARN.
+  
+  **Format:** `arn:aws:s3tables:region:account-id:bucket/bucket-name`
+  
+  ```yaml
+  arn: arn:aws:s3tables:us-east-1:123456789012:bucket/my-table-bucket
+  ```
+</ParamField>
+
+<ParamField path="endpoint" type="string">
+  Custom endpoint URL for S3 Tables. Must start with `http://` or `https://`.
+  
+  ```yaml
+  endpoint: https://s3tables.us-east-1.amazonaws.com
+  ```
+</ParamField>
+
+<ParamField path="credentials" type="object" required>
+  AWS credentials (same format as S3 volume credentials).
+  
+  ```yaml
+  credentials:
+    credential_type: access_key
+    aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+    aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  ```
+</ParamField>
+
+### File Volume
+
+<ParamField path="path" type="string" required>
+  Local filesystem path for the volume.
+  
+  ```yaml
+  path: /data/iceberg
+  ```
+</ParamField>
+
+### Memory Volume
+
+Memory volumes have no additional configuration beyond `type: memory`.
+
+## Databases
+
+<ParamField path="databases[].ident" type="string" required>
+  Database identifier name.
+  
+  ```yaml
+  ident: analytics
+  ```
+</ParamField>
+
+<ParamField path="databases[].volume" type="string" required>
+  Volume identifier to use for this database. Must reference a defined volume.
+  
+  ```yaml
+  volume: my_s3_bucket
+  ```
+</ParamField>
+
+<ParamField path="databases[].should_refresh" type="boolean" default="false">
+  Whether to refresh the database metadata on startup.
+  
+  ```yaml
+  should_refresh: true
+  ```
+</ParamField>
+
+## Schemas
+
+<ParamField path="schemas[].database" type="string" required>
+  Database name for this schema.
+  
+  ```yaml
+  database: analytics
+  ```
+</ParamField>
+
+<ParamField path="schemas[].schema" type="string" required>
+  Schema name.
+  
+  ```yaml
+  schema: production
+  ```
+</ParamField>
+
+## Tables
+
+Tables can be pre-registered from existing Iceberg metadata.
+
+<ParamField path="tables[].database" type="string" required>
+  Database name for this table.
+  
+  ```yaml
+  database: analytics
+  ```
+</ParamField>
+
+<ParamField path="tables[].schema" type="string" required>
+  Schema name for this table.
+  
+  ```yaml
+  schema: production
+  ```
+</ParamField>
+
+<ParamField path="tables[].table" type="string" required>
+  Table name.
+  
+  ```yaml
+  table: users
+  ```
+</ParamField>
+
+<ParamField path="tables[].metadata_location" type="string" required>
+  S3 or file URL to the Iceberg metadata JSON file.
+  
+  ```yaml
+  metadata_location: s3://my-bucket/warehouse/users/metadata/v1.metadata.json
+  ```
+</ParamField>
+
+## Complete Examples
+
+### Basic Memory Volume
+
+```yaml
+volumes:
+  - ident: embucket
+    type: memory
+    database: embucket
+
+databases:
+  - ident: embucket
+    volume: embucket
+
+schemas:
+  - database: embucket
+    schema: public
+```
+
+### S3 Volume with Access Keys
+
+```yaml
+volumes:
+  - ident: production_data
+    type: s3
+    region: us-west-2
+    bucket: my-data-lake
+    database: analytics
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+      aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+databases:
+  - ident: analytics
+    volume: production_data
+
+schemas:
+  - database: analytics
+    schema: public
+  - database: analytics
+    schema: staging
+```
+
+### S3 Tables Volume
+
+```yaml
+volumes:
+  - ident: s3tables_production
+    type: s3tables
+    arn: arn:aws:s3tables:us-east-1:123456789012:bucket/prod-iceberg
+    database: warehouse
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+      aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+databases:
+  - ident: warehouse
+    volume: s3tables_production
+
+schemas:
+  - database: warehouse
+    schema: sales
+  - database: warehouse
+    schema: inventory
+```
+
+### File Volume
+
+```yaml
+volumes:
+  - ident: local_dev
+    type: file
+    path: /tmp/embucket-data
+    database: dev
+
+databases:
+  - ident: dev
+    volume: local_dev
+
+schemas:
+  - database: dev
+    schema: testing
+```
+
+### Multiple Volumes and Pre-registered Tables
+
+```yaml
+volumes:
+  - ident: raw_data
+    type: s3
+    region: us-east-1
+    bucket: raw-data-bucket
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+      aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+  - ident: processed_data
+    type: s3
+    region: us-east-1
+    bucket: processed-data-bucket
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: AKIAIOSFODNN7EXAMPLE
+      aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+databases:
+  - ident: raw
+    volume: raw_data
+  - ident: processed
+    volume: processed_data
+
+schemas:
+  - database: raw
+    schema: public
+  - database: processed
+    schema: public
+
+tables:
+  - database: processed
+    schema: public
+    table: customer_metrics
+    metadata_location: s3://processed-data-bucket/warehouse/customer_metrics/metadata/v3.metadata.json
+```
+
+### Custom S3 Endpoint (MinIO)
+
+```yaml
+volumes:
+  - ident: minio_storage
+    type: s3
+    region: us-east-1
+    bucket: embucket
+    endpoint: http://localhost:9000
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: minioadmin
+      aws-secret-access-key: minioadmin
+
+databases:
+  - ident: local
+    volume: minio_storage
+
+schemas:
+  - database: local
+    schema: public
+```
+
+### Session Token Credentials
+
+```yaml
+volumes:
+  - ident: temp_bucket
+    type: s3
+    region: us-west-2
+    bucket: temporary-data
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ASIAIOSFODNN7EXAMPLE
+      aws-secret-access-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      aws-session-token: FwoGZXIvYXdzEBYaDK...
+
+databases:
+  - ident: temp
+    volume: temp_bucket
+
+schemas:
+  - database: temp
+    schema: public
+```
+
+## Validation Rules
+
+- **Volume idents** must be unique within the configuration
+- **Bucket names** must only contain alphanumeric characters, hyphens, or underscores
+- **Bucket names** must not start or end with a hyphen or underscore
+- **AWS Access Key IDs** must be 20 character alphanumeric strings
+- **AWS Secret Access Keys** must be 40 character Base64-like strings
+- **S3 Tables ARNs** must follow format: `arn:aws:s3tables:region:account-id:bucket/bucket-name`
+- **Endpoints** must start with `http://` or `https://`
+- **Database volumes** must reference existing volume idents
+- **Schema databases** must reference existing database idents
+- **Table metadata locations** must be accessible from the volume's object store
+
+## Bootstrap Behavior
+
+1. **Volumes** are created first in the order defined
+2. **Databases** are created and linked to their volumes
+3. **Schemas** are created within databases (default `public` schema is auto-created)
+4. **Tables** are registered from their metadata locations
+5. If items already exist, they are skipped (idempotent)
+6. The `should_refresh` flag triggers metadata reload for S3 Tables volumes

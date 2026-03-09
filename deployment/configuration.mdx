@@ -1,0 +1,488 @@
+---
+title: 'Configuration Reference'
+description: 'Complete reference for Embucket configuration options'
+---
+
+## Overview
+
+Embucket can be configured using:
+- **Command-line flags**: `./embucketd --flag value`
+- **Environment variables**: `export VAR=value`
+- **Configuration files**: YAML files for metastore configuration
+
+All CLI flags have corresponding environment variable equivalents.
+
+## Server Configuration
+
+### Network Settings
+
+<ParamField path="--host" type="string" default="localhost" env="BUCKET_HOST">
+  Host address to bind the server to.
+  
+  - Use `0.0.0.0` to accept connections from any network interface
+  - Use `localhost` or `127.0.0.1` for local-only access
+  - Specify a specific IP address to bind to a particular interface
+  
+  **Example:**
+  ```bash
+  ./embucketd --host 0.0.0.0
+  ```
+</ParamField>
+
+<ParamField path="--port" type="number" default="3000" env="BUCKET_PORT">
+  Port number for the Snowflake-compatible API server.
+  
+  **Example:**
+  ```bash
+  ./embucketd --port 8080
+  ```
+</ParamField>
+
+<ParamField path="--timeout" type="number" default="18000" env="IDLE_TIMEOUT_SECONDS">
+  Service idle timeout in seconds. Connections idle for longer than this duration may be closed.
+  
+  **Default**: 18000 seconds (5 hours)
+</ParamField>
+
+## Metastore Configuration
+
+<ParamField path="--metastore-config" type="string" env="METASTORE_CONFIG">
+  Path to YAML configuration file describing volumes, databases, schemas, and tables.
+  
+  **Example:**
+  ```bash
+  ./embucketd --metastore-config /opt/embucket/config/metastore.yaml
+  ```
+  
+  See [Metastore Configuration File](#metastore-configuration-file) section below for YAML format.
+</ParamField>
+
+### Metastore Configuration File
+
+The metastore configuration file defines external catalogs and table locations.
+
+#### S3 Tables (AWS S3 Table Buckets)
+
+```yaml
+volumes:
+  - ident: demo
+    type: s3-tables
+    database: demo
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_ACCESS_KEY
+      aws-secret-access-key: YOUR_SECRET_KEY
+    arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+```
+
+#### S3 with External Iceberg Tables
+
+```yaml
+volumes:
+  - ident: lakehouse
+    type: s3
+    region: us-east-2
+    bucket: YOUR_BUCKET_NAME
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_ACCESS_KEY
+      aws-secret-access-key: YOUR_SECRET_KEY
+
+databases:
+  - ident: demo
+    volume: lakehouse
+
+schemas:
+  - database: demo
+    schema: tpch_10
+
+tables:
+  - database: demo
+    schema: tpch_10
+    table: customer
+    metadata_location: s3://YOUR_BUCKET_NAME/tpch_10/customer/metadata/00001-eea1cccb-38a4-4fe2-8c95-c01dae9d0c60.metadata.json
+  - database: demo
+    schema: tpch_10
+    table: lineitem
+    metadata_location: s3://YOUR_BUCKET_NAME/tpch_10/lineitem/metadata/00001-d777220e-d508-4033-a229-8c4c8d8fe514.metadata.json
+```
+
+<Warning>
+  External Iceberg tables must be in the same bucket as the volume definition.
+</Warning>
+
+## Query Execution Settings
+
+### Concurrency and Timeouts
+
+<ParamField path="--max-concurrency-level" type="number" default="8" env="MAX_CONCURRENCY_LEVEL">
+  Maximum number of queries that can run concurrently.
+  
+  - Higher values increase throughput but require more memory
+  - Set based on available CPU cores and memory
+  
+  **Example:**
+  ```bash
+  ./embucketd --max-concurrency-level 16
+  ```
+</ParamField>
+
+<ParamField path="--query-timeout-secs" type="number" default="1200" env="QUERY_TIMEOUT_SECS">
+  Maximum duration in seconds a single query is allowed to run before being terminated.
+  
+  **Default**: 1200 seconds (20 minutes)
+  
+  **Example:**
+  ```bash
+  ./embucketd --query-timeout-secs 600
+  ```
+</ParamField>
+
+<ParamField path="--max-concurrent-table-fetches" type="number" default="2" env="MAX_CONCURRENT_TABLE_FETCHES">
+  Maximum number of concurrent requests to fetch table metadata.
+  
+  - Increase for faster catalog scanning with many tables
+  - May increase load on catalog service
+</ParamField>
+
+## Memory and Disk Pools
+
+### Memory Pool Configuration
+
+<ParamField path="--mem-pool-type" type="string" default="greedy" env="MEM_POOL_TYPE">
+  Memory pool allocation strategy:
+  
+  - **`greedy`**: Allocates memory aggressively, may use all available pool for a single query
+  - **`fair`**: Distributes memory more evenly across concurrent queries
+  
+  **Example:**
+  ```bash
+  ./embucketd --mem-pool-type fair
+  ```
+</ParamField>
+
+<ParamField path="--mem-pool-size-mb" type="number" env="MEM_POOL_SIZE_MB">
+  Maximum memory pool size in megabytes for query execution.
+  
+  - If not set, uses system-determined defaults
+  - Recommended: 50-70% of available system memory
+  
+  **Example:**
+  ```bash
+  ./embucketd --mem-pool-size-mb 8192
+  ```
+</ParamField>
+
+<ParamField path="--mem-enable-track-consumers-pool" type="boolean" env="MEM_ENABLE_TRACK_CONSUMERS_POOL">
+  Enable tracking of per-consumer (per-query) memory usage.
+  
+  - Useful for debugging memory-intensive queries
+  - Adds slight overhead
+  
+  **Example:**
+  ```bash
+  ./embucketd --mem-enable-track-consumers-pool true
+  ```
+</ParamField>
+
+### Disk Pool Configuration
+
+<ParamField path="--disk-pool-size-mb" type="number" env="DISK_POOL_SIZE_MB">
+  Maximum disk pool size in megabytes for query spilling.
+  
+  - Used when queries exceed memory pool size
+  - Requires fast disk (SSD recommended)
+  
+  **Example:**
+  ```bash
+  ./embucketd --disk-pool-size-mb 20480
+  ```
+</ParamField>
+
+## SQL Configuration
+
+<ParamField path="--data-format" type="string" default="json" env="DATA_FORMAT">
+  Data serialization format for the Snowflake v1 API.
+  
+  **Default**: `json`
+</ParamField>
+
+<ParamField path="--sql-parser-dialect" type="string" default="snowflake" env="SQL_PARSER_DIALECT">
+  SQL parser dialect to use for query parsing.
+  
+  **Options**: `snowflake`, `postgres`, `mysql`, `generic`
+  
+  **Example:**
+  ```bash
+  ./embucketd --sql-parser-dialect snowflake
+  ```
+</ParamField>
+
+## Authentication
+
+<ParamField path="--auth-demo-user" type="string" default="embucket" env="AUTH_DEMO_USER">
+  Username for demo authentication mode.
+  
+  **Example:**
+  ```bash
+  ./embucketd --auth-demo-user myuser
+  ```
+</ParamField>
+
+<ParamField path="--auth-demo-password" type="string" default="embucket" env="AUTH_DEMO_PASSWORD">
+  Password for demo authentication mode.
+  
+  **Example:**
+  ```bash
+  ./embucketd --auth-demo-password mypassword
+  ```
+</ParamField>
+
+<ParamField path="--jwt-secret" type="string" env="JWT_SECRET">
+  Secret key for JWT token signing. Values are hidden in logs for security.
+  
+  <Warning>
+    Always change this from the default in production deployments. Use a cryptographically secure random string.
+  </Warning>
+  
+  **Example:**
+  ```bash
+  export JWT_SECRET="your-secure-random-string-here"
+  ./embucketd
+  ```
+</ParamField>
+
+## Tracing and Monitoring
+
+### Logging Configuration
+
+<ParamField path="--tracing-level" type="string" default="info" env="TRACING_LEVEL">
+  Default tracing/logging level.
+  
+  **Options**:
+  - `off`: Disable all logging
+  - `info`: Standard operational logs
+  - `debug`: Detailed debugging information
+  - `trace`: Very verbose trace-level logs
+  
+  <Note>
+    This setting is overridden by the `RUST_LOG` environment variable if set.
+  </Note>
+  
+  **Example:**
+  ```bash
+  ./embucketd --tracing-level debug
+  ```
+</ParamField>
+
+<ParamField path="--alloc-tracing" type="boolean" env="ALLOC_TRACING">
+  Enable memory allocation tracing for debugging memory usage.
+  
+  - Adds performance overhead
+  - Useful for identifying memory leaks or inefficient allocations
+  
+  **Example:**
+  ```bash
+  ./embucketd --alloc-tracing true
+  ```
+</ParamField>
+
+### OpenTelemetry Configuration
+
+<ParamField path="--otel-exporter-otlp-protocol" type="string" default="grpc" env="OTEL_EXPORTER_OTLP_PROTOCOL">
+  OpenTelemetry OTLP exporter protocol.
+  
+  **Options**:
+  - `grpc`: Use gRPC protocol (default)
+  - `http/json`: Use HTTP with JSON encoding
+  
+  **Example:**
+  ```bash
+  ./embucketd --otel-exporter-otlp-protocol grpc
+  ```
+</ParamField>
+
+<ParamField path="--tracing-span-processor" type="string" default="batch-span-processor" env="span_processor">
+  Tracing span processor type.
+  
+  **Options**:
+  - `batch-span-processor`: Batch spans for efficient export
+  - `batch-span-processor-experimental-async-runtime`: Experimental async batch processor
+</ParamField>
+
+### OTLP Endpoint
+
+Configure the OpenTelemetry collector endpoint using standard OTLP environment variables:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+./embucketd
+```
+
+## AWS SDK Timeouts
+
+These settings control timeouts for AWS SDK operations (S3, S3 Tables, etc.).
+
+<ParamField path="--aws-sdk-connect-timeout-secs" type="number" default="3" env="AWS_SDK_CONNECT_TIMEOUT_SECS">
+  Timeout for establishing AWS SDK connections in seconds.
+</ParamField>
+
+<ParamField path="--aws-sdk-operation-timeout-secs" type="number" default="30" env="AWS_SDK_OPERATION_TIMEOUT_SECS">
+  Total timeout for AWS SDK operations in seconds.
+</ParamField>
+
+<ParamField path="--aws-sdk-operation-attempt-timeout-secs" type="number" default="10" env="AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS">
+  Timeout for individual AWS SDK operation attempts in seconds (before retry).
+</ParamField>
+
+**Example:**
+```bash
+./embucketd \
+  --aws-sdk-connect-timeout-secs 5 \
+  --aws-sdk-operation-timeout-secs 60 \
+  --aws-sdk-operation-attempt-timeout-secs 15
+```
+
+## Iceberg Timeouts
+
+<ParamField path="--iceberg-table-timeout-secs" type="number" default="30" env="ICEBERG_CREATE_TABLE_TIMEOUT_SECS">
+  Timeout for Iceberg table operations (create, load metadata) in seconds.
+</ParamField>
+
+<ParamField path="--iceberg-catalog-timeout-secs" type="number" default="10" env="ICEBERG_CATALOG_TIMEOUT_SECS">
+  Timeout for Iceberg catalog operations in seconds.
+</ParamField>
+
+**Example:**
+```bash
+./embucketd \
+  --iceberg-table-timeout-secs 60 \
+  --iceberg-catalog-timeout-secs 20
+```
+
+## Object Store Timeouts
+
+<ParamField path="--object-store-timeout-secs" type="number" default="10" env="OBJECT_STORE_TIMEOUT_SECS">
+  Timeout for object store operations (reads, writes) in seconds.
+</ParamField>
+
+<ParamField path="--object-store-connect-timeout-secs" type="number" default="3" env="OBJECT_STORE_CONNECT_TIMEOUT_SECS">
+  Timeout for establishing object store connections in seconds.
+</ParamField>
+
+**Example:**
+```bash
+./embucketd \
+  --object-store-timeout-secs 30 \
+  --object-store-connect-timeout-secs 5
+```
+
+## Configuration Examples
+
+### Development Configuration
+
+Quick local development setup:
+
+```bash
+./embucketd \
+  --host localhost \
+  --port 3000 \
+  --tracing-level debug \
+  --max-concurrency-level 4 \
+  --query-timeout-secs 300
+```
+
+### Production Configuration
+
+Optimized production deployment:
+
+```bash
+./embucketd \
+  --host 0.0.0.0 \
+  --port 3000 \
+  --metastore-config /opt/embucket/config/metastore.yaml \
+  --max-concurrency-level 16 \
+  --query-timeout-secs 1800 \
+  --mem-pool-type greedy \
+  --mem-pool-size-mb 16384 \
+  --disk-pool-size-mb 51200 \
+  --tracing-level info \
+  --aws-sdk-operation-timeout-secs 60 \
+  --object-store-timeout-secs 30
+```
+
+### Environment Variables Configuration
+
+Using environment variables for cleaner configuration:
+
+```bash
+# Create environment file
+cat > embucket.env << EOF
+BUCKET_HOST=0.0.0.0
+BUCKET_PORT=3000
+METASTORE_CONFIG=/opt/embucket/config/metastore.yaml
+QUERY_TIMEOUT_SECS=1800
+MAX_CONCURRENCY_LEVEL=16
+MEM_POOL_TYPE=greedy
+MEM_POOL_SIZE_MB=16384
+DISK_POOL_SIZE_MB=51200
+TRACING_LEVEL=info
+JWT_SECRET=your-secure-secret-here
+AWS_SDK_OPERATION_TIMEOUT_SECS=60
+OBJECT_STORE_TIMEOUT_SECS=30
+EOF
+
+# Load and run
+source embucket.env
+./embucketd
+```
+
+### High-Performance Configuration
+
+For compute-intensive workloads:
+
+```bash
+./embucketd \
+  --max-concurrency-level 32 \
+  --mem-pool-type fair \
+  --mem-pool-size-mb 32768 \
+  --disk-pool-size-mb 102400 \
+  --max-concurrent-table-fetches 8 \
+  --query-timeout-secs 3600
+```
+
+## Docker Environment Variables
+
+When running in Docker, these additional environment variables are commonly used:
+
+```bash
+docker run -p 3000:3000 \
+  -e BUCKET_HOST=0.0.0.0 \
+  -e OBJECT_STORE_BACKEND=s3 \
+  -e AWS_ACCESS_KEY_ID=your-key \
+  -e AWS_SECRET_ACCESS_KEY=your-secret \
+  -e AWS_REGION=us-east-2 \
+  -e S3_BUCKET=your-bucket \
+  -e S3_ENDPOINT=http://minio:9000 \
+  -e S3_ALLOW_HTTP=true \
+  -e QUERY_TIMEOUT_SECS=1200 \
+  -e MAX_CONCURRENCY_LEVEL=8 \
+  embucket/embucket
+```
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Docker" icon="docker" href="/deployment/docker">
+    Deploy with Docker
+  </Card>
+  
+  <Card title="AWS Lambda" icon="aws" href="/deployment/aws-lambda">
+    Serverless deployment
+  </Card>
+  
+  <Card title="Binary" icon="binary" href="/deployment/binary">
+    Standalone binary setup
+  </Card>
+</CardGroup>

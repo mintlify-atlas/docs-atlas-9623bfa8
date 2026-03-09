@@ -1,0 +1,403 @@
+---
+title: Connection Settings
+description: Snowflake-compatible connection parameters for Embucket
+---
+
+Embucket implements the Snowflake REST API, allowing you to connect using Snowflake-compatible clients and drivers. This page describes the connection parameters and configuration.
+
+## Connection Parameters
+
+<ParamField path="host" type="string" required>
+  Hostname or IP address of the Embucket server.
+  
+  **Default:** `localhost`
+  
+  ```python
+  host = "embucket.example.com"
+  ```
+</ParamField>
+
+<ParamField path="port" type="integer" required>
+  Port number the Embucket server is listening on.
+  
+  **Default:** `3000`
+  
+  ```python
+  port = 3000
+  ```
+</ParamField>
+
+<ParamField path="account" type="string" required>
+  Account identifier. For Embucket, this can be any non-empty string.
+  
+  ```python
+  account = "embucket"
+  ```
+</ParamField>
+
+<ParamField path="user" type="string" required>
+  Username for authentication.
+  
+  **Default demo user:** `embucket`
+  
+  ```python
+  user = "embucket"
+  ```
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  Password for authentication.
+  
+  **Default demo password:** `embucket`
+  
+  ```python
+  password = "embucket"
+  ```
+</ParamField>
+
+<ParamField path="database" type="string">
+  Initial database to connect to.
+  
+  ```python
+  database = "analytics"
+  ```
+</ParamField>
+
+<ParamField path="schema" type="string">
+  Initial schema to use.
+  
+  **Default:** `public`
+  
+  ```python
+  schema = "public"
+  ```
+</ParamField>
+
+<ParamField path="warehouse" type="string">
+  Warehouse identifier (accepted for compatibility but not used).
+  
+  ```python
+  warehouse = "compute"
+  ```
+</ParamField>
+
+<ParamField path="protocol" type="string">
+  Protocol to use for connection.
+  
+  **Options:** `http`, `https`
+  
+  **Default:** `http` (for local development)
+  
+  ```python
+  protocol = "https"
+  ```
+</ParamField>
+
+## Connection String Format
+
+### Python (snowflake-connector-python)
+
+```python
+import snowflake.connector
+
+conn = snowflake.connector.connect(
+    user='embucket',
+    password='embucket',
+    account='embucket',
+    host='localhost',
+    port=3000,
+    protocol='http',
+    database='analytics',
+    schema='public'
+)
+```
+
+### JDBC
+
+```java
+String url = "jdbc:snowflake://localhost:3000/";
+Properties props = new Properties();
+props.put("user", "embucket");
+props.put("password", "embucket");
+props.put("account", "embucket");
+props.put("db", "analytics");
+props.put("schema", "public");
+
+Connection conn = DriverManager.getConnection(url, props);
+```
+
+### ODBC
+
+```ini
+[Embucket]
+Driver=SnowflakeDSIIDriver
+Server=localhost
+Port=3000
+UID=embucket
+PWD=embucket
+Account=embucket
+Database=analytics
+Schema=public
+```
+
+### Node.js
+
+```javascript
+const snowflake = require('snowflake-sdk');
+
+const connection = snowflake.createConnection({
+  account: 'embucket',
+  username: 'embucket',
+  password: 'embucket',
+  host: 'localhost',
+  port: 3000,
+  protocol: 'http',
+  database: 'analytics',
+  schema: 'public'
+});
+
+connection.connect((err, conn) => {
+  if (err) {
+    console.error('Unable to connect: ' + err.message);
+  } else {
+    console.log('Successfully connected');
+  }
+});
+```
+
+### Go
+
+```go
+import (
+    "database/sql"
+    _ "github.com/snowflakedb/gosnowflake"
+)
+
+dsn := "embucket:embucket@localhost:3000/analytics/public?protocol=http&account=embucket"
+db, err := sql.Open("snowflake", dsn)
+```
+
+## URL Format
+
+The general connection URL format is:
+
+```
+http(s)://host:port/
+```
+
+Examples:
+
+```bash
+# Local development
+http://localhost:3000/
+
+# Production with TLS
+https://embucket.example.com:443/
+
+# Custom port
+http://192.168.1.100:8080/
+```
+
+## Authentication
+
+Embucket supports two authentication methods:
+
+### Demo Authentication (Default)
+
+In demo mode, authentication accepts a configurable username and password.
+
+**Configuration:**
+```bash
+embucketd \
+  --auth-demo-user myuser \
+  --auth-demo-password mypassword
+```
+
+**Environment Variables:**
+```bash
+export AUTH_DEMO_USER="myuser"
+export AUTH_DEMO_PASSWORD="mypassword"
+```
+
+### JWT Authentication
+
+For production deployments, configure a JWT secret:
+
+```bash
+embucketd --jwt-secret your-secret-key
+```
+
+Or via environment variable:
+```bash
+export JWT_SECRET="your-secret-key"
+```
+
+<Note>
+The `JWT_SECRET` environment variable is automatically cleared after startup for security.
+</Note>
+
+## Session Parameters
+
+You can pass session parameters during login:
+
+```python
+import snowflake.connector
+
+conn = snowflake.connector.connect(
+    user='embucket',
+    password='embucket',
+    account='embucket',
+    host='localhost',
+    port=3000,
+    protocol='http',
+    session_parameters={
+        'QUERY_TAG': 'analytics_job',
+        'TIMEZONE': 'UTC'
+    }
+)
+```
+
+## Client Configuration
+
+### Timeouts
+
+Configure client timeouts to match server settings:
+
+```python
+conn = snowflake.connector.connect(
+    user='embucket',
+    password='embucket',
+    account='embucket',
+    host='localhost',
+    port=3000,
+    login_timeout=10,  # Login timeout in seconds
+    network_timeout=60  # Network timeout in seconds
+)
+```
+
+### Connection Pooling
+
+```python
+from snowflake.connector.connection import SnowflakeConnection
+from snowflake.connector import pooling
+
+pool = pooling.SimpleConnectionPool(
+    user='embucket',
+    password='embucket',
+    account='embucket',
+    host='localhost',
+    port=3000,
+    protocol='http',
+    pool_size=5
+)
+
+with pool.get() as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM my_table")
+```
+
+## TLS/SSL Configuration
+
+For production deployments with HTTPS:
+
+```python
+conn = snowflake.connector.connect(
+    user='embucket',
+    password='embucket',
+    account='embucket',
+    host='embucket.example.com',
+    port=443,
+    protocol='https',
+    insecure_mode=False  # Validate SSL certificates
+)
+```
+
+## Troubleshooting
+
+### Connection Refused
+
+If you cannot connect:
+
+1. Verify the server is running:
+   ```bash
+   curl http://localhost:3000/
+   ```
+
+2. Check the host and port configuration:
+   ```bash
+   embucketd --host 0.0.0.0 --port 3000
+   ```
+
+3. Ensure firewall rules allow connections
+
+### Authentication Failed
+
+Verify credentials match server configuration:
+
+```bash
+# Check server logs for authentication details
+embucketd --tracing-level debug
+```
+
+### Timeout Errors
+
+Adjust query timeout settings:
+
+```bash
+embucketd --query-timeout-secs 3600
+```
+
+Or in client:
+```python
+conn = snowflake.connector.connect(
+    # ... connection params ...
+    network_timeout=120
+)
+```
+
+## Environment-Specific Examples
+
+### Development
+
+```python
+# Local development with demo auth
+conn = snowflake.connector.connect(
+    user='embucket',
+    password='embucket',
+    account='embucket',
+    host='localhost',
+    port=3000,
+    protocol='http'
+)
+```
+
+### Staging
+
+```python
+# Staging environment
+conn = snowflake.connector.connect(
+    user='staging_user',
+    password=os.environ['EMBUCKET_PASSWORD'],
+    account='embucket',
+    host='embucket-staging.internal',
+    port=3000,
+    protocol='http',
+    database='staging'
+)
+```
+
+### Production
+
+```python
+# Production with HTTPS and JWT
+conn = snowflake.connector.connect(
+    user='prod_user',
+    password=os.environ['EMBUCKET_PASSWORD'],
+    account='embucket',
+    host='embucket.example.com',
+    port=443,
+    protocol='https',
+    database='production',
+    schema='public'
+)
+```

@@ -1,0 +1,428 @@
+---
+title: 'Binary Deployment'
+description: 'Build and run Embucket as a standalone binary'
+---
+
+## Overview
+
+Embucket can be deployed as a single, self-contained binary. This deployment method provides:
+
+- No dependencies or external runtime requirements
+- Direct control over execution environment
+- Minimal resource overhead
+- Easy integration with existing infrastructure
+
+## Building from Source
+
+### Prerequisites
+
+<Steps>
+  <Step title="Install Rust">
+    Install Rust using rustup:
+    
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+  </Step>
+
+  <Step title="Install system dependencies">
+    Install required build dependencies:
+    
+    **Debian/Ubuntu:**
+    ```bash
+    apt-get update && apt-get install -y \
+      cmake \
+      pkg-config \
+      libssl-dev \
+      ca-certificates
+    ```
+    
+    **macOS:**
+    ```bash
+    brew install cmake pkg-config openssl
+    ```
+    
+    **RHEL/Fedora:**
+    ```bash
+    dnf install cmake pkg-config openssl-devel ca-certificates
+    ```
+  </Step>
+</Steps>
+
+### Build Process
+
+<CodeGroup>
+```bash Debug Build
+git clone https://github.com/Embucket/embucket.git
+cd embucket
+cargo build
+./target/debug/embucketd
+```
+
+```bash Release Build
+git clone https://github.com/Embucket/embucket.git
+cd embucket
+cargo build --release
+./target/release/embucketd
+```
+
+```bash With Experimental Features
+cargo build --release --features experimental
+./target/release/embucketd
+```
+</CodeGroup>
+
+<Note>
+  Release builds are optimized and significantly faster than debug builds. Always use `--release` for production deployments.
+</Note>
+
+## System Requirements
+
+### Minimum Requirements
+
+<CardGroup cols={2}>
+  <Card title="CPU" icon="microchip">
+    - **Minimum**: 2 CPU cores
+    - **Recommended**: 4+ cores
+    - x86_64 or ARM64 architecture
+  </Card>
+
+  <Card title="Memory" icon="memory">
+    - **Minimum**: 2 GB RAM
+    - **Recommended**: 4-8 GB RAM
+    - More memory for larger queries
+  </Card>
+
+  <Card title="Disk" icon="hard-drive">
+    - **Minimum**: 1 GB for binary and metadata
+    - **Recommended**: 10+ GB for query spilling
+    - SSD recommended for better I/O
+  </Card>
+
+  <Card title="Network" icon="network-wired">
+    - Low-latency connection to object storage
+    - Bandwidth depends on query workload
+    - For S3: Same region deployment recommended
+  </Card>
+</CardGroup>
+
+### Operating Systems
+
+- Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+, Fedora 35+)
+- macOS (11.0+)
+- Other Unix-like systems with Rust support
+
+## Running the Binary
+
+### Basic Usage
+
+Start Embucket with default settings:
+
+```bash
+./embucketd
+```
+
+The server starts on `localhost:3000` by default.
+
+### With Configuration File
+
+Start with a metastore configuration:
+
+```bash
+./embucketd --metastore-config config/metastore.yaml
+```
+
+### Custom Host and Port
+
+Bind to a specific host and port:
+
+```bash
+./embucketd --host 0.0.0.0 --port 8080
+```
+
+### Using Environment Variables
+
+Configure via environment variables:
+
+```bash
+export BUCKET_HOST=0.0.0.0
+export BUCKET_PORT=3000
+export METASTORE_CONFIG=config/metastore.yaml
+export QUERY_TIMEOUT_SECS=600
+export MAX_CONCURRENCY_LEVEL=16
+
+./embucketd
+```
+
+## Binary Flags and Options
+
+All command-line flags can be set via environment variables or CLI arguments.
+
+### Server Configuration
+
+<ParamField path="--host" type="string" default="localhost" env="BUCKET_HOST">
+  Host to bind to
+</ParamField>
+
+<ParamField path="--port" type="number" default="3000" env="BUCKET_PORT">
+  Port to bind to
+</ParamField>
+
+<ParamField path="--timeout" type="number" default="18000" env="IDLE_TIMEOUT_SECONDS">
+  Service idle timeout in seconds
+</ParamField>
+
+### Metastore Configuration
+
+<ParamField path="--metastore-config" type="string" env="METASTORE_CONFIG">
+  Path to YAML config describing volumes/databases to seed the metastore
+</ParamField>
+
+### Query Execution
+
+<ParamField path="--max-concurrency-level" type="number" default="8" env="MAX_CONCURRENCY_LEVEL">
+  Maximum number of running queries at the same time
+</ParamField>
+
+<ParamField path="--query-timeout-secs" type="number" default="1200" env="QUERY_TIMEOUT_SECS">
+  Maximum duration in seconds a single query is allowed to run
+</ParamField>
+
+<ParamField path="--max-concurrent-table-fetches" type="number" default="2" env="MAX_CONCURRENT_TABLE_FETCHES">
+  The maximum number of concurrent requests to get table details
+</ParamField>
+
+### Memory and Disk Pools
+
+<ParamField path="--mem-pool-type" type="string" default="greedy" env="MEM_POOL_TYPE">
+  Memory pool type for query execution: `greedy` or `fair`
+</ParamField>
+
+<ParamField path="--mem-pool-size-mb" type="number" env="MEM_POOL_SIZE_MB">
+  Maximum memory pool size in megabytes
+</ParamField>
+
+<ParamField path="--mem-enable-track-consumers-pool" type="boolean" env="MEM_ENABLE_TRACK_CONSUMERS_POOL">
+  Wrap memory pool with TrackConsumersPool for tracking per-consumer memory usage
+</ParamField>
+
+<ParamField path="--disk-pool-size-mb" type="number" env="DISK_POOL_SIZE_MB">
+  Maximum disk pool size in megabytes (for spilling)
+</ParamField>
+
+### Authentication
+
+<ParamField path="--auth-demo-user" type="string" default="embucket" env="AUTH_DEMO_USER">
+  User for auth demo
+</ParamField>
+
+<ParamField path="--auth-demo-password" type="string" default="embucket" env="AUTH_DEMO_PASSWORD">
+  Password for auth demo
+</ParamField>
+
+<ParamField path="--jwt-secret" type="string" env="JWT_SECRET">
+  JWT secret for auth (hidden in logs)
+</ParamField>
+
+### SQL Configuration
+
+<ParamField path="--data-format" type="string" default="json" env="DATA_FORMAT">
+  Data serialization format in Snowflake v1 API
+</ParamField>
+
+<ParamField path="--sql-parser-dialect" type="string" default="snowflake" env="SQL_PARSER_DIALECT">
+  SQL parser dialect: `snowflake`, `postgres`, `mysql`, `generic`, etc.
+</ParamField>
+
+### Tracing and Monitoring
+
+<ParamField path="--tracing-level" type="string" default="info" env="TRACING_LEVEL">
+  Tracing level: `off`, `info`, `debug`, or `trace` (overridden by RUST_LOG)
+</ParamField>
+
+<ParamField path="--tracing-span-processor" type="string" default="batch-span-processor" env="span_processor">
+  Tracing span processor
+</ParamField>
+
+<ParamField path="--otel-exporter-otlp-protocol" type="string" default="grpc" env="OTEL_EXPORTER_OTLP_PROTOCOL">
+  OpenTelemetry Exporter Protocol: `grpc` or `http/json`
+</ParamField>
+
+<ParamField path="--alloc-tracing" type="boolean" env="ALLOC_TRACING">
+  Enable memory tracing functionality
+</ParamField>
+
+### AWS SDK Timeouts
+
+<ParamField path="--aws-sdk-connect-timeout-secs" type="number" default="3" env="AWS_SDK_CONNECT_TIMEOUT_SECS">
+  AWS SDK connect timeout in seconds
+</ParamField>
+
+<ParamField path="--aws-sdk-operation-timeout-secs" type="number" default="30" env="AWS_SDK_OPERATION_TIMEOUT_SECS">
+  AWS SDK operation timeout in seconds
+</ParamField>
+
+<ParamField path="--aws-sdk-operation-attempt-timeout-secs" type="number" default="10" env="AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS">
+  AWS SDK operation attempt timeout in seconds
+</ParamField>
+
+### Iceberg Timeouts
+
+<ParamField path="--iceberg-table-timeout-secs" type="number" default="30" env="ICEBERG_CREATE_TABLE_TIMEOUT_SECS">
+  Iceberg create table timeout in seconds
+</ParamField>
+
+<ParamField path="--iceberg-catalog-timeout-secs" type="number" default="10" env="ICEBERG_CATALOG_TIMEOUT_SECS">
+  Iceberg catalog timeout in seconds
+</ParamField>
+
+### Object Store Timeouts
+
+<ParamField path="--object-store-timeout-secs" type="number" default="10" env="OBJECT_STORE_TIMEOUT_SECS">
+  Object store timeout in seconds
+</ParamField>
+
+<ParamField path="--object-store-connect-timeout-secs" type="number" default="3" env="OBJECT_STORE_CONNECT_TIMEOUT_SECS">
+  Object store connect timeout in seconds
+</ParamField>
+
+## Systemd Service
+
+Run Embucket as a systemd service for automatic startup and management.
+
+### Service File
+
+Create `/etc/systemd/system/embucket.service`:
+
+```ini
+[Unit]
+Description=Embucket Lakehouse Server
+After=network.target
+
+[Service]
+Type=simple
+User=embucket
+Group=embucket
+WorkingDirectory=/opt/embucket
+EnvironmentFile=/opt/embucket/embucket.env
+ExecStart=/opt/embucket/embucketd --metastore-config /opt/embucket/config/metastore.yaml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=embucket
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/embucket/data
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Environment File
+
+Create `/opt/embucket/embucket.env`:
+
+```bash
+BUCKET_HOST=0.0.0.0
+BUCKET_PORT=3000
+QUERY_TIMEOUT_SECS=1200
+MAX_CONCURRENCY_LEVEL=16
+MEM_POOL_TYPE=greedy
+MEM_POOL_SIZE_MB=8192
+DISK_POOL_SIZE_MB=20480
+TRACING_LEVEL=info
+JWT_SECRET=your-secure-jwt-secret-here
+```
+
+### Installation
+
+```bash
+# Create user and directories
+sudo useradd -r -s /bin/false embucket
+sudo mkdir -p /opt/embucket/{config,data}
+sudo chown -R embucket:embucket /opt/embucket
+
+# Copy binary
+sudo cp target/release/embucketd /opt/embucket/
+sudo chmod +x /opt/embucket/embucketd
+
+# Install service
+sudo cp embucket.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable embucket
+sudo systemctl start embucket
+```
+
+### Service Management
+
+```bash
+# Start service
+sudo systemctl start embucket
+
+# Stop service
+sudo systemctl stop embucket
+
+# Restart service
+sudo systemctl restart embucket
+
+# Check status
+sudo systemctl status embucket
+
+# View logs
+sudo journalctl -u embucket -f
+```
+
+## Production Considerations
+
+<CardGroup cols={2}>
+  <Card title="Reverse Proxy" icon="server">
+    Use nginx or similar for:
+    - TLS termination
+    - Load balancing
+    - Request rate limiting
+    - Access logging
+  </Card>
+
+  <Card title="Monitoring" icon="chart-line">
+    Integrate with monitoring systems:
+    - Prometheus metrics (via OTLP)
+    - CloudWatch (if on AWS)
+    - Datadog, New Relic, etc.
+  </Card>
+
+  <Card title="High Availability" icon="shield">
+    Deploy multiple instances:
+    - Place behind load balancer
+    - Share object storage backend
+    - Query-per-node architecture
+  </Card>
+
+  <Card title="Security" icon="lock">
+    Security best practices:
+    - Change default credentials
+    - Use strong JWT secret
+    - Run as non-root user
+    - Enable firewall rules
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="sliders" href="/deployment/configuration">
+    Explore all configuration options
+  </Card>
+
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy using Docker containers
+  </Card>
+</CardGroup>

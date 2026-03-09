@@ -1,0 +1,450 @@
+---
+title: Installation
+description: Install Embucket using Docker, pre-built binaries, or build from source
+---
+
+Embucket can be installed using multiple methods depending on your environment and requirements. Choose the method that best fits your needs.
+
+## System Requirements
+
+Before installing Embucket, ensure your system meets these requirements:
+
+<CardGroup cols={2}>
+  <Card title="Operating System" icon="desktop">
+    - Linux (x86_64, ARM64)
+    - macOS (Intel, Apple Silicon)
+    - Windows (via WSL2)
+  </Card>
+  <Card title="Resources" icon="microchip">
+    - **Minimum**: 512MB RAM, 1 CPU core
+    - **Recommended**: 2GB+ RAM, 2+ CPU cores
+  </Card>
+</CardGroup>
+
+<Info>
+Embucket is a single binary with zero external dependencies, making it easy to deploy in resource-constrained environments.
+</Info>
+
+## Installation Methods
+
+### Docker (Recommended)
+
+The fastest way to get started with Embucket is using Docker.
+
+<Steps>
+  <Step title="Pull the Embucket image">
+    ```bash
+    docker pull embucket/embucket
+    ```
+  </Step>
+
+  <Step title="Run the container">
+    Start Embucket with default configuration:
+
+    ```bash
+    docker run --name embucket --rm -p 3000:3000 embucket/embucket
+    ```
+
+    Or run in detached mode:
+
+    ```bash
+    docker run --name embucket -d -p 3000:3000 embucket/embucket
+    ```
+  </Step>
+
+  <Step title="Verify the installation">
+    Check that the container is running:
+
+    ```bash
+    docker ps
+    ```
+
+    You should see the `embucket` container in the list.
+  </Step>
+</Steps>
+
+#### Docker with Custom Configuration
+
+To use a custom configuration file with Docker:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 \
+  -v $PWD/config:/app/config \
+  embucket/embucket \
+  ./embucketd --metastore-config config/metastore.yaml
+```
+
+This command:
+- Mounts your local `config` directory to `/app/config` in the container
+- Passes the `--metastore-config` flag to specify the configuration file
+
+<Tip>
+For production deployments, use Docker Compose or Kubernetes to manage container lifecycle and configuration. See the [Deployment](/deployment/docker) guide.
+</Tip>
+
+### Pre-built Binary
+
+Download pre-built binaries for your platform from the [GitHub Releases](https://github.com/Embucket/embucket/releases) page.
+
+<Steps>
+  <Step title="Download the binary">
+    <CodeGroup>
+    ```bash Linux (x86_64)
+    curl -L -o embucketd https://github.com/Embucket/embucket/releases/latest/download/embucketd-linux-x86_64
+    chmod +x embucketd
+    ```
+
+    ```bash Linux (ARM64)
+    curl -L -o embucketd https://github.com/Embucket/embucket/releases/latest/download/embucketd-linux-arm64
+    chmod +x embucketd
+    ```
+
+    ```bash macOS (Intel)
+    curl -L -o embucketd https://github.com/Embucket/embucket/releases/latest/download/embucketd-darwin-x86_64
+    chmod +x embucketd
+    ```
+
+    ```bash macOS (Apple Silicon)
+    curl -L -o embucketd https://github.com/Embucket/embucket/releases/latest/download/embucketd-darwin-arm64
+    chmod +x embucketd
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Move to system path (optional)">
+    For easier access, move the binary to a directory in your PATH:
+
+    ```bash
+    sudo mv embucketd /usr/local/bin/
+    ```
+  </Step>
+
+  <Step title="Run Embucket">
+    Start the Embucket server:
+
+    ```bash
+    ./embucketd
+    ```
+
+    Or if you moved it to your PATH:
+
+    ```bash
+    embucketd
+    ```
+
+    By default, Embucket listens on port 3000.
+  </Step>
+</Steps>
+
+#### Binary with Configuration
+
+To run with a custom configuration file:
+
+```bash
+./embucketd --metastore-config config/metastore.yaml
+```
+
+<Note>
+The binary includes an embedded metastore for quick starts. For production deployments, use external catalog configuration.
+</Note>
+
+### Build from Source
+
+For development or customization, build Embucket from source.
+
+<Steps>
+  <Step title="Install prerequisites">
+    Ensure you have the following installed:
+
+    - **Rust toolchain** (1.70 or later): Install from [rustup.rs](https://rustup.rs/)
+    - **CMake**: Required for some dependencies
+    - **pkg-config**: Required on Linux
+    - **OpenSSL development libraries**: Required on Linux
+
+    <CodeGroup>
+    ```bash Ubuntu/Debian
+    sudo apt-get update
+    sudo apt-get install -y cmake pkg-config libssl-dev ca-certificates
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+
+    ```bash macOS
+    brew install cmake openssl
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+
+    ```bash RHEL/CentOS/Fedora
+    sudo dnf install -y cmake pkg-config openssl-devel
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/Embucket/embucket.git
+    cd embucket
+    ```
+  </Step>
+
+  <Step title="Build the project">
+    Build in debug mode (faster compile, slower runtime):
+
+    ```bash
+    cargo build
+    ```
+
+    Or build in release mode (optimized for performance):
+
+    ```bash
+    cargo build --release
+    ```
+
+    <Info>
+    Release builds take longer to compile but run significantly faster. Use release mode for production deployments.
+    </Info>
+  </Step>
+
+  <Step title="Run the binary">
+    For debug builds:
+
+    ```bash
+    ./target/debug/embucketd
+    ```
+
+    For release builds:
+
+    ```bash
+    ./target/release/embucketd
+    ```
+  </Step>
+</Steps>
+
+#### Build Options
+
+Embucket supports optional features during compilation:
+
+```bash
+# Build without experimental features
+cargo build --release --no-default-features
+
+# Build with experimental features enabled
+cargo build --release --features experimental
+```
+
+<Warning>
+Experimental features may be unstable and are not recommended for production use.
+</Warning>
+
+## Installation Verification
+
+After installing Embucket using any method, verify the installation:
+
+<Steps>
+  <Step title="Check the server is running">
+    If running via Docker:
+
+    ```bash
+    docker ps | grep embucket
+    ```
+
+    If running as a binary, check the process:
+
+    ```bash
+    ps aux | grep embucketd
+    ```
+  </Step>
+
+  <Step title="Test the HTTP endpoint">
+    Verify the server responds to HTTP requests:
+
+    ```bash
+    curl http://localhost:3000/health
+    ```
+
+    <Note>
+    If the health endpoint is not available, the server is running if you see log output without errors.
+    </Note>
+  </Step>
+
+  <Step title="Connect with Snowflake CLI">
+    Install and configure the Snowflake CLI to verify connectivity:
+
+    ```bash
+    pip install snowflake-cli
+    snow connection test -c local
+    ```
+
+    See the [Quickstart](/quickstart) guide for detailed CLI setup instructions.
+  </Step>
+</Steps>
+
+## Environment Variables
+
+Embucket can be configured using environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `METASTORE_CONFIG` | Path to metastore configuration file | - |
+| `JWT_SECRET` | Secret key for JWT token generation | `63f4945d921d599f27ae4fdf5bada3f1` |
+| `TRACING_LEVEL` | Logging level (trace, debug, info, warn, error) | `info` |
+| `RUST_LOG` | Rust logging configuration | `info` |
+| `OBJECT_STORE_BACKEND` | Object storage backend (file, s3, gcs, azure) | `file` |
+| `FILE_STORAGE_PATH` | Local file storage path | `data/` |
+| `BUCKET_HOST` | Host address to bind to | `0.0.0.0` |
+
+### Using Environment Variables
+
+<CodeGroup>
+```bash Docker
+docker run --name embucket --rm -p 3000:3000 \
+  -e TRACING_LEVEL=debug \
+  -e JWT_SECRET=your-secret-key \
+  embucket/embucket
+```
+
+```bash Binary
+export TRACING_LEVEL=debug
+export JWT_SECRET=your-secret-key
+./embucketd
+```
+
+```bash .env file
+# Create a .env file
+cat > .env << EOF
+METASTORE_CONFIG=config/metastore.yaml
+JWT_SECRET=your-secret-key
+TRACING_LEVEL=debug
+RUST_LOG=info
+EOF
+
+# Load and run
+set -a && source .env && set +a
+./embucketd
+```
+</CodeGroup>
+
+<Warning>
+For production deployments, always use a strong, randomly generated `JWT_SECRET`. The default value is only suitable for development.
+</Warning>
+
+## Troubleshooting
+
+### Docker Issues
+
+**Problem**: Cannot connect to the Docker daemon
+
+```bash
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock
+```
+
+**Solution**: Ensure Docker is running:
+
+```bash
+# Linux
+sudo systemctl start docker
+
+# macOS
+open -a Docker
+```
+
+---
+
+**Problem**: Port 3000 is already in use
+
+```bash
+Error starting userland proxy: listen tcp4 0.0.0.0:3000: bind: address already in use
+```
+
+**Solution**: Use a different port:
+
+```bash
+docker run --name embucket --rm -p 8080:3000 embucket/embucket
+```
+
+Then connect to `localhost:8080` instead.
+
+### Build Issues
+
+**Problem**: Cargo build fails with linker errors
+
+```bash
+error: linking with `cc` failed
+```
+
+**Solution**: Install required development dependencies:
+
+<CodeGroup>
+```bash Ubuntu/Debian
+sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+```
+
+```bash macOS
+xcode-select --install
+brew install cmake openssl
+```
+</CodeGroup>
+
+---
+
+**Problem**: Out of memory during compilation
+
+```bash
+error: could not compile due to previous error
+Signal: 9 (SIGKILL)
+```
+
+**Solution**: Reduce parallel compilation jobs:
+
+```bash
+cargo build --release -j 1
+```
+
+### Runtime Issues
+
+**Problem**: Permission denied when running the binary
+
+```bash
+bash: ./embucketd: Permission denied
+```
+
+**Solution**: Make the binary executable:
+
+```bash
+chmod +x embucketd
+```
+
+---
+
+**Problem**: Server starts but cannot connect from Snowflake CLI
+
+**Solution**: Check that:
+
+1. The server is listening on the correct host:
+   ```bash
+   export BUCKET_HOST=0.0.0.0
+   ./embucketd
+   ```
+
+2. Firewall allows connections to port 3000
+
+3. Snowflake CLI configuration uses `http://` protocol (not `https://`)
+
+## Next Steps
+
+Now that you have Embucket installed, continue with:
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run your first queries in under 5 minutes
+  </Card>
+  <Card title="Configuration" icon="gear" href="/deployment/configuration">
+    Configure external catalogs and data sources
+  </Card>
+  <Card title="Deployment" icon="server" href="/deployment/docker">
+    Deploy Embucket to production environments
+  </Card>
+  <Card title="SQL Reference" icon="book" href="/guides/querying">
+    Learn about Snowflake SQL support
+  </Card>
+</CardGroup>

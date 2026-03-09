@@ -1,0 +1,324 @@
+---
+title: Snowflake CLI with Embucket
+description: Connect and query Embucket using the official Snowflake CLI
+---
+
+The Snowflake CLI (`snow`) provides a command-line interface for interacting with Embucket's Snowflake-compatible API. This guide walks through installation, configuration, and common workflows.
+
+## Installation
+
+Install the Snowflake CLI using pip:
+
+```bash
+pip install snowflake-cli
+```
+
+Verify the installation:
+
+```bash
+snow --version
+```
+
+## Connection Configuration
+
+### Locate Configuration File
+
+First, find where the Snowflake CLI stores its configuration:
+
+```bash
+snow --info | grep "config_file_path" -A 1
+```
+
+This outputs the path to your config file (e.g., `~/.snowflake/config.toml`).
+
+```bash
+CONFIG=<your_config_file_path>
+```
+
+### Configure Local Connection
+
+Add a connection profile for your local Embucket instance:
+
+```bash
+echo '
+[connections.local]
+host = "localhost"
+region = "us-east-2"
+port = 3000
+protocol = "http"
+database = "embucket"
+schema = "public"
+warehouse = "em.wh"
+password = "embucket"
+account = "acc.local"
+user = "embucket"
+' >> $CONFIG
+```
+
+<Note>
+The default credentials are `user=embucket` and `password=embucket`. These are demo credentials for local development.
+</Note>
+
+### Test the Connection
+
+Verify your connection is working:
+
+```bash
+snow connection test -c local
+```
+
+**Expected output:**
+
+```
++-----------------------------+
+| key             | value     |
+|-----------------+-----------|
+| Connection name | local     |
+| Status          | OK        |
+| Host            | localhost |
+| Account         | acc       |
+| User            | embucket  |
+| Role            | not set   |
+| Database        | embucket  |
+| Warehouse       | em.wh     |
++-----------------------------+
+```
+
+## Running Queries
+
+### Basic Query Execution
+
+Execute SQL queries using the `snow sql` command:
+
+```bash
+snow sql -c local -q "SELECT 1 as result;"
+```
+
+**Output:**
+
+```
++--------+
+| RESULT |
+|--------|
+|      1 |
++--------+
+```
+
+### Date/Time Functions
+
+Embucket supports Snowflake's date and time functions:
+
+```bash
+snow sql -c local -q "SELECT dateadd(day, -1, current_timestamp()) as yesterday;"
+```
+
+**Output:**
+
+```
++----------------------------------+
+| yesterday                        |
+|----------------------------------|
+| 2025-01-02 03:04:05.040000+00:00 |
++----------------------------------+
+```
+
+### Query External Catalogs
+
+If you've configured external catalogs in your metastore config, query them:
+
+```bash
+# List schemas in a catalog
+snow sql -c local -q "SHOW SCHEMAS IN demo;"
+
+# List tables in a schema
+snow sql -c local -q "SHOW TABLES IN demo.tpch_10;"
+
+# Query table data
+snow sql -c local -q "SELECT * FROM demo.tpch_10.customer LIMIT 10;"
+```
+
+## Common Commands and Workflows
+
+### Schema Management
+
+<CodeGroup>
+
+```bash Create Schema
+snow sql -c local -q "CREATE SCHEMA IF NOT EXISTS my_schema;"
+```
+
+```bash Show Schemas
+snow sql -c local -q "SHOW SCHEMAS;"
+```
+
+```bash Use Schema
+snow sql -c local -q "USE SCHEMA my_schema;"
+```
+
+</CodeGroup>
+
+### Table Operations
+
+<CodeGroup>
+
+```bash Create Table
+snow sql -c local -q "
+CREATE TABLE IF NOT EXISTS users (
+  id INT,
+  name VARCHAR,
+  created_at TIMESTAMP
+);"
+```
+
+```bash Show Tables
+snow sql -c local -q "SHOW TABLES;"
+```
+
+```bash Describe Table
+snow sql -c local -q "DESCRIBE TABLE users;"
+```
+
+</CodeGroup>
+
+### Data Manipulation
+
+<CodeGroup>
+
+```bash Insert Data
+snow sql -c local -q "
+INSERT INTO users VALUES 
+  (1, 'Alice', CURRENT_TIMESTAMP()),
+  (2, 'Bob', CURRENT_TIMESTAMP());"
+```
+
+```bash Select Data
+snow sql -c local -q "SELECT * FROM users;"
+```
+
+```bash Aggregate Query
+snow sql -c local -q "
+SELECT 
+  DATE(created_at) as date,
+  COUNT(*) as user_count
+FROM users
+GROUP BY DATE(created_at);"
+```
+
+</CodeGroup>
+
+### Interactive SQL Session
+
+Start an interactive SQL session instead of running one-off queries:
+
+```bash
+snow sql -c local
+```
+
+This opens an interactive prompt where you can run multiple queries:
+
+```sql
+embucket.public> SELECT 1;
+embucket.public> SHOW TABLES;
+embucket.public> exit;
+```
+
+## Remote Connections
+
+### Lambda Deployment
+
+For Embucket deployed on AWS Lambda, create a new connection profile:
+
+```bash
+snow connection add
+```
+
+Provide the following details:
+
+```
+Enter connection name: lambda
+Enter account: acc.lambda
+Enter user: embucket
+Enter password: embucket
+Enter role: em.role
+Enter warehouse: em.wh
+Enter database: demo
+Enter schema: public
+Enter host: https://<lambda-url>.lambda-url.us-east-2.on.aws
+Enter port: (leave blank)
+Enter region: us-east-2
+Enter authenticator: (leave blank)
+```
+
+Test the Lambda connection:
+
+```bash
+snow sql -c lambda -q "SELECT dateadd(day, -1, current_timestamp()) as yesterday;"
+```
+
+## Tips and Best Practices
+
+<CardGroup cols={2}>
+
+<Card title="Use Connection Aliases" icon="link">
+Create multiple connection profiles for different environments (local, staging, production).
+</Card>
+
+<Card title="Query History" icon="clock-rotate-left">
+Access your query history with the up/down arrow keys in interactive mode.
+</Card>
+
+<Card title="Output Formats" icon="table">
+The CLI outputs results in table format by default, making them easy to read.
+</Card>
+
+<Card title="Error Messages" icon="triangle-exclamation">
+Embucket returns Snowflake-compatible error codes for debugging failed queries.
+</Card>
+
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+
+<Accordion title="Connection timeout errors">
+- Verify Embucket is running: `docker ps` or check the process
+- Ensure the port matches your configuration (default: 3000)
+- Check firewall rules if connecting to a remote instance
+</Accordion>
+
+<Accordion title="Authentication failed">
+- Verify username and password match your Embucket configuration
+- Default credentials are `embucket/embucket` for demo environments
+- For production, ensure proper credentials are configured
+</Accordion>
+
+<Accordion title="Database or schema not found">
+- Check available databases: `SHOW DATABASES;`
+- Verify schema exists: `SHOW SCHEMAS IN database_name;`
+- Use fully qualified names: `database.schema.table`
+</Accordion>
+
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="dbt Integration" icon="diagram-project" href="/guides/dbt-integration">
+Use Embucket as a dbt target for local development
+</Card>
+
+<Card title="Querying Guide" icon="magnifying-glass" href="/guides/querying">
+Learn about supported SQL syntax and query patterns
+</Card>
+
+<Card title="Security" icon="shield" href="/guides/security">
+Configure authentication and secure your deployment
+</Card>
+
+<Card title="External Catalogs" icon="database" href="/catalogs/overview">
+Connect to AWS S3 Table Buckets and Iceberg tables
+</Card>
+
+</CardGroup>

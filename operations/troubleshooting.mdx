@@ -1,0 +1,550 @@
+---
+title: Troubleshooting
+description: Common issues, errors, and solutions for running Embucket in production
+---
+
+This guide helps you diagnose and resolve common issues when running Embucket.
+
+## Common Errors and Solutions
+
+### Concurrency Limit Errors
+
+<ResponseField name="Error Message">
+  ```
+  Concurrency limit reached — too many concurrent queries are running
+  ```
+</ResponseField>
+
+**Cause:** The number of running queries has reached `MAX_CONCURRENCY_LEVEL`.
+
+**Reference:** `crates/executor/src/error.rs:19-23`
+
+**Solutions:**
+
+<AccordionGroup>
+  <Accordion title="Increase Concurrency Limit">
+    Raise the maximum concurrent queries:
+    ```bash
+    MAX_CONCURRENCY_LEVEL=16  # Increase from default 8
+    ```
+    
+    Balance this with available CPU and memory resources.
+  </Accordion>
+  
+  <Accordion title="Optimize Long-Running Queries">
+    - Identify slow queries in traces
+    - Add appropriate filters and limits
+    - Consider breaking large queries into smaller batches
+    - Review table statistics and partition pruning
+  </Accordion>
+  
+  <Accordion title="Implement Client-Side Queuing">
+    Add retry logic with exponential backoff in your application when this error occurs.
+  </Accordion>
+</AccordionGroup>
+
+### Query Timeout Errors
+
+<ResponseField name="Error Message">
+  ```
+  Query execution exceeded timeout
+  ```
+</ResponseField>
+
+**Cause:** Query execution time exceeded `QUERY_TIMEOUT_SECS`.
+
+**Reference:** `crates/executor/src/error.rs:25-29`
+
+**Solutions:**
+
+<Steps>
+  <Step title="Increase Query Timeout">
+    For legitimately long-running queries:
+    ```bash
+    QUERY_TIMEOUT_SECS=3600  # 1 hour instead of 20 minutes
+    ```
+  </Step>
+  
+  <Step title="Optimize Query Performance">
+    - Check execution plan with `EXPLAIN`
+    - Verify partition pruning is working
+    - Add appropriate WHERE clauses
+    - Review join strategies
+  </Step>
+  
+  <Step title="Check Resource Availability">
+    - Monitor memory usage (may be spilling to disk)
+    - Check CPU utilization
+    - Verify network latency to object storage
+  </Step>
+</Steps>
+
+## Connection Issues
+
+### Session Not Found
+
+<ResponseField name="Error Message">
+  ```
+  Missing DataFusion session for id {session_id}
+  ```
+</ResponseField>
+
+**Cause:** Session expired or was never created.
+
+**Reference:** `crates/executor/src/error.rs:126-131`
+
+**Solutions:**
+
+1. **Check session lifecycle:**
+   - Sessions expire after inactivity (default: 5 hours)
+   - Verify client is creating sessions properly
+   - Check session ID is being passed correctly
+
+2. **Monitor session expiry:**
+   ```bash
+   # Check logs for session deletion
+   RUST_LOG=executor::service=debug
+   ```
+
+3. **Increase session timeout** (if needed):
+   Session timeout is controlled by `SESSION_INACTIVITY_EXPIRATION_SECONDS` (18000 seconds / 5 hours).
+   
+   **Reference:** `crates/executor/src/session.rs`
+
+### AWS Connection Timeouts
+
+<ResponseField name="Error Message">
+  AWS SDK timeout errors when accessing S3 or Glue
+</ResponseField>
+
+**Solutions:**
+
+<Tabs>
+  <Tab title="Increase Timeouts">
+    ```bash
+    # Connection establishment
+    AWS_SDK_CONNECT_TIMEOUT_SECS=10
+    
+    # Overall operation timeout
+    AWS_SDK_OPERATION_TIMEOUT_SECS=60
+    
+    # Single attempt timeout
+    AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS=30
+    ```
+    
+    **Reference:** `crates/embucketd/src/cli.rs:172-194`
+  </Tab>
+  
+  <Tab title="Check Network">
+    - Verify network connectivity to AWS
+    - Check security group and VPC rules
+    - Ensure IAM credentials are valid
+    - Test S3 access with AWS CLI
+  </Tab>
+  
+  <Tab title="Optimize Object Store">
+    ```bash
+    # Increase object store timeouts
+    OBJECT_STORE_TIMEOUT_SECS=30
+    OBJECT_STORE_CONNECT_TIMEOUT_SECS=10
+    ```
+    
+    **Reference:** `crates/embucketd/src/cli.rs:212-226`
+  </Tab>
+</Tabs>
+
+## Query Failures
+
+### DataFusion Query Errors
+
+<ResponseField name="Error Message">
+  ```
+  DataFusion query error: {error}, query: {query}
+  ```
+</ResponseField>
+
+**Reference:** `crates/executor/src/error.rs:133-140`
+
+**Common causes:**
+
+<CardGroup cols={2}>
+  <Card title="Schema Mismatch" icon="table">
+    - Column names or types don't match
+    - Case sensitivity issues
+    - Missing columns in SELECT
+    
+    **Fix:** Verify schema with `DESCRIBE TABLE`
+  </Card>
+  
+  <Card title="Type Coercion" icon="code">
+    - Incompatible data types in operations
+    - Invalid CAST operations
+    - Type inference failures
+    
+    **Fix:** Use explicit CAST or type conversion functions
+  </Card>
+  
+  <Card title="Missing Table" icon="folder-open">
+    - Table or view doesn't exist
+    - Wrong database or schema context
+    - Catalog not registered
+    
+    **Fix:** Check current context with `SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()`
+  </Card>
+  
+  <Card title="Invalid SQL" icon="bug">
+    - Syntax errors
+    - Unsupported SQL features
+    - Parser dialect mismatch
+    
+    **Fix:** Review SQL against Snowflake dialect
+  </Card>
+</CardGroup>
+
+### Table or Database Not Found
+
+<ResponseField name="Error Messages">
+  ```
+  Database {db} not found
+  Table {table} not found in schema {schema}
+  Schema {schema} not found in database {db}
+  ```
+</ResponseField>
+
+**Reference:** `crates/executor/src/error.rs:184-216`
+
+**Troubleshooting steps:**
+
+1. **List available objects:**
+   ```sql
+   -- Check databases
+   SHOW DATABASES;
+   
+   -- Check schemas
+   SHOW SCHEMAS IN DATABASE mydb;
+   
+   -- Check tables
+   SHOW TABLES IN SCHEMA mydb.myschema;
+   ```
+
+2. **Verify current context:**
+   ```sql
+   SELECT CURRENT_DATABASE(), CURRENT_SCHEMA();
+   ```
+
+3. **Use fully qualified names:**
+   ```sql
+   SELECT * FROM database_name.schema_name.table_name;
+   ```
+
+4. **Check catalog registration:**
+   - Verify `METASTORE_CONFIG` points to correct file
+   - Ensure all volumes/databases are defined
+   - Check AWS credentials for Glue catalog access
+
+### Iceberg Catalog Errors
+
+<ResponseField name="Error Message">
+  Iceberg catalog timeout or connection errors
+</ResponseField>
+
+**Solutions:**
+
+<Steps>
+  <Step title="Increase Catalog Timeouts">
+    ```bash
+    ICEBERG_CATALOG_TIMEOUT_SECS=30
+    ICEBERG_CREATE_TABLE_TIMEOUT_SECS=60
+    ```
+    
+    **Reference:** `crates/embucketd/src/cli.rs:196-210`
+  </Step>
+  
+  <Step title="Verify Catalog Configuration">
+    Check your metastore config file for correct catalog settings:
+    - Glue catalog region
+    - REST catalog endpoint
+    - Authentication credentials
+  </Step>
+  
+  <Step title="Test Catalog Access">
+    Use AWS CLI to verify Glue catalog access:
+    ```bash
+    aws glue get-databases --region us-west-2
+    aws glue get-tables --database-name mydb --region us-west-2
+    ```
+  </Step>
+</Steps>
+
+## Performance Problems
+
+### High Memory Usage
+
+**Symptoms:**
+- Out of memory errors
+- Frequent disk spilling
+- Slow query execution
+
+**Diagnostics:**
+
+<Tabs>
+  <Tab title="Enable Memory Tracking">
+    ```bash
+    MEM_ENABLE_TRACK_CONSUMERS_POOL=true
+    ```
+    
+    This tracks the top 5 memory consumers.
+    
+    **Reference:** `crates/executor/src/service.rs:247-263`
+  </Tab>
+  
+  <Tab title="Check Memory Configuration">
+    ```bash
+    # View current settings
+    echo $MEM_POOL_TYPE
+    echo $MEM_POOL_SIZE_MB
+    echo $DISK_POOL_SIZE_MB
+    ```
+  </Tab>
+  
+  <Tab title="Monitor Spilling">
+    Enable debug logging to see disk spill events:
+    ```bash
+    RUST_LOG=datafusion::execution=debug
+    ```
+  </Tab>
+</Tabs>
+
+**Solutions:**
+
+1. **Increase memory pool:**
+   ```bash
+   MEM_POOL_SIZE_MB=16384  # Increase to 16GB
+   ```
+
+2. **Enable fair memory pool:**
+   ```bash
+   MEM_POOL_TYPE=fair
+   ```
+   
+   **Reference:** `crates/executor/src/utils.rs:126-143`
+
+3. **Configure disk spilling:**
+   ```bash
+   DISK_POOL_SIZE_MB=51200  # 50GB for spilling
+   ```
+
+4. **Optimize queries:**
+   - Add LIMIT clauses where appropriate
+   - Use incremental processing for large datasets
+   - Reduce number of concurrent queries
+
+### Slow Query Execution
+
+**Diagnostics:**
+
+<Steps>
+  <Step title="Enable Debug Tracing">
+    ```bash
+    TRACING_LEVEL=debug
+    RUST_LOG=executor=debug,datafusion=debug
+    ```
+  </Step>
+  
+  <Step title="Analyze Query Plan">
+    ```sql
+    EXPLAIN SELECT * FROM large_table WHERE date = '2024-01-01';
+    ```
+    
+    Look for:
+    - Table scans without filters
+    - Missing partition pruning
+    - Inefficient joins
+  </Step>
+  
+  <Step title="Check Resource Usage">
+    - Monitor CPU usage
+    - Check memory consumption
+    - Verify disk I/O (if spilling)
+    - Measure network latency to object store
+  </Step>
+</Steps>
+
+**Common causes and fixes:**
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Full table scan | No partition pruning | Add partition column to WHERE clause |
+| High network latency | Slow S3 reads | Increase object store timeouts, check region |
+| Disk spilling | Insufficient memory | Increase `MEM_POOL_SIZE_MB` |
+| CPU bottleneck | Too many concurrent queries | Reduce `MAX_CONCURRENCY_LEVEL` |
+| Slow metadata | Many table fetches | Increase `MAX_CONCURRENT_TABLE_FETCHES` |
+
+## Memory and Resource Issues
+
+### Disk Manager Errors
+
+<ResponseField name="Error Message">
+  ```
+  Expected unique ownership of DiskManager
+  ```
+</ResponseField>
+
+**Reference:** `crates/executor/src/error.rs:55-59`
+
+**Cause:** Internal error with disk spilling configuration.
+
+**Solutions:**
+- Restart Embucket
+- Check disk space in temp directory
+- Verify `DISK_POOL_SIZE_MB` is set correctly
+
+### Query Cancelled
+
+<ResponseField name="Error Message">
+  ```
+  Query {query_id} cancelled
+  ```
+</ResponseField>
+
+**Reference:** `crates/executor/src/error.rs:588-593`
+
+**Causes:**
+1. **User initiated:** Client called abort/cancel
+2. **Timeout:** Query exceeded `QUERY_TIMEOUT_SECS`
+3. **System shutdown:** Embucket shutting down gracefully
+
+**Check cancellation reason in logs:**
+```bash
+RUST_LOG=executor=debug
+```
+
+Look for:
+- `abort_cancelled_query` - User abort
+- `query_timeout_received_do_abort` - Timeout
+
+**Reference:** `crates/executor/src/service.rs:629-642`
+
+## Debug Logging
+
+### Enabling Debug Output
+
+For comprehensive debugging:
+
+```bash
+# Maximum verbosity
+export RUST_LOG=trace
+export TRACING_LEVEL=trace
+
+# Targeted debugging
+export RUST_LOG="executor::service=debug,executor::query=debug,catalog=info"
+export TRACING_LEVEL=debug
+
+# Specific subsystems
+export RUST_LOG="executor::running_queries=trace,datafusion::physical_plan=debug"
+```
+
+### Key Debug Targets
+
+<AccordionGroup>
+  <Accordion title="Query Execution">
+    ```bash
+    RUST_LOG=executor::service=debug,executor::query=debug
+    ```
+    
+    Shows:
+    - Query submission and lifecycle
+    - Execution status changes
+    - Result handling
+  </Accordion>
+  
+  <Accordion title="Session Management">
+    ```bash
+    RUST_LOG=executor::session=debug,executor::service=debug
+    ```
+    
+    Shows:
+    - Session creation and deletion
+    - Session expiry
+    - Context management
+  </Accordion>
+  
+  <Accordion title="Catalog Operations">
+    ```bash
+    RUST_LOG=catalog=debug,catalog_metastore=debug
+    ```
+    
+    Shows:
+    - Table metadata fetches
+    - Catalog registration
+    - Database/schema lookups
+  </Accordion>
+  
+  <Accordion title="DataFusion Internals">
+    ```bash
+    RUST_LOG=datafusion::physical_plan=debug,datafusion::execution=debug
+    ```
+    
+    Shows:
+    - Physical plan execution
+    - Memory pool operations
+    - Disk spilling
+  </Accordion>
+</AccordionGroup>
+
+### Reading Trace Spans
+
+Key spans to monitor:
+
+```
+ExecutionService::submit
+├── spawn_query_task
+│   ├── query_alloc (query_id, session_id)
+│   ├── spawn_query_sub_task
+│   │   └── UserQuery::execute
+│   └── finished_query_status (query_status, error_code)
+└── ExecutionService::wait
+```
+
+**Reference:** `crates/executor/src/service.rs:453-707`
+
+## Where to Get Help
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/embucket/embucket/issues">
+    Report bugs and request features
+  </Card>
+  
+  <Card title="Documentation" icon="book" href="/">
+    Browse complete documentation
+  </Card>
+  
+  <Card title="Discussions" icon="comments" href="https://github.com/embucket/embucket/discussions">
+    Ask questions and share solutions
+  </Card>
+  
+  <Card title="Slack Community" icon="slack">
+    Join the Embucket community (link in GitHub README)
+  </Card>
+</CardGroup>
+
+## Diagnostic Checklist
+
+When reporting issues, include:
+
+- [ ] Embucket version (`embucketd --version`)
+- [ ] Configuration (environment variables, sanitized)
+- [ ] Error message and stack trace
+- [ ] Query that caused the issue (if applicable)
+- [ ] Relevant logs with debug enabled
+- [ ] System resources (CPU, memory, disk)
+- [ ] Deployment environment (Docker, Kubernetes, bare metal)
+- [ ] Metastore configuration (sanitized)
+- [ ] OpenTelemetry trace ID (if available)
+
+<Tip>
+Always enable debug logging before reproducing an issue:
+```bash
+RUST_LOG=debug TRACING_LEVEL=debug ./embucketd
+```
+</Tip>

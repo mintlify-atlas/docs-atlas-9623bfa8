@@ -1,0 +1,524 @@
+---
+title: Security
+description: Authentication, authorization, and security best practices for Embucket
+---
+
+Embucket implements Snowflake's authentication mechanisms and provides multiple options for securing your deployment. This guide covers authentication methods, token management, and production security recommendations.
+
+## Authentication Overview
+
+Embucket supports two primary authentication methods:
+
+<CardGroup cols={2}>
+
+<Card title="Demo Credentials" icon="key">
+Username/password authentication for development and testing environments.
+</Card>
+
+<Card title="JWT Tokens" icon="shield-halved">
+JSON Web Token-based authentication for secure production deployments.
+</Card>
+
+</CardGroup>
+
+## Demo User/Password Authentication
+
+### Default Credentials
+
+For local development, Embucket provides demo credentials:
+
+- **Username**: `embucket`
+- **Password**: `embucket`
+
+<Warning>
+Default demo credentials should **never** be used in production environments.
+</Warning>
+
+### Configuration
+
+Demo credentials are configured at startup:
+
+<CodeGroup>
+
+```bash Docker
+docker run --name embucket --rm -p 3000:3000 \
+  -e AUTH_DEMO_USER=myuser \
+  -e AUTH_DEMO_PASSWORD=mypassword \
+  embucket/embucket
+```
+
+```bash Binary
+./embucketd \
+  --auth-demo-user myuser \
+  --auth-demo-password mypassword
+```
+
+```bash Environment Variables
+export AUTH_DEMO_USER=myuser
+export AUTH_DEMO_PASSWORD=mypassword
+./embucketd
+```
+
+</CodeGroup>
+
+### Login Process
+
+When a client connects, they authenticate via the Snowflake login endpoint:
+
+```bash
+curl -X POST http://localhost:3000/session/v1/login-request \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "LOGIN_NAME": "embucket",
+      "PASSWORD": "embucket",
+      "ACCOUNT_NAME": "acc",
+      "CLIENT_APP_ID": "SnowSQL",
+      "CLIENT_APP_VERSION": "1.0"
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "successfully executed",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+
+The returned JWT token is used for subsequent requests.
+
+## JWT Token Configuration
+
+### JWT Secret Setup
+
+The JWT secret is used to sign and verify authentication tokens. Set it using environment variables or command-line flags:
+
+<CodeGroup>
+
+```bash Environment Variable
+export JWT_SECRET="your-secret-key-here"
+./embucketd
+```
+
+```bash Docker
+docker run --name embucket --rm -p 3000:3000 \
+  -e JWT_SECRET="your-secret-key-here" \
+  embucket/embucket
+```
+
+```bash Command Flag
+./embucketd --jwt-secret "your-secret-key-here"
+```
+
+</CodeGroup>
+
+<Warning>
+Never commit JWT secrets to version control. Use environment variables or secret management systems.
+</Warning>
+
+### Generating Secure Secrets
+
+Generate a cryptographically secure JWT secret:
+
+```bash
+# Generate random 32-byte secret (base64 encoded)
+openssl rand -base64 32
+
+# Example output:
+K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=
+```
+
+Use this generated value as your JWT_SECRET:
+
+```bash
+export JWT_SECRET="K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols="
+```
+
+### JWT Token Properties
+
+<ResponseField name="Expiration" type="3 days">
+Tokens expire after 3 days (259,200 seconds) by default.
+</ResponseField>
+
+<ResponseField name="Algorithm" type="HS256">
+Tokens are signed using HMAC-SHA256.
+</ResponseField>
+
+<ResponseField name="Claims" type="object">
+Includes session_id, username, account, database, schema, and host.
+</ResponseField>
+
+### Token Anatomy
+
+A decoded JWT token contains:
+
+```json
+{
+  "sub": "embucket",
+  "exp": 1735948800,
+  "iat": 1735689600,
+  "aud": "localhost",
+  "session": {
+    "session_id": "01HZK3X...",
+    "metadata": {
+      "user_name": "embucket",
+      "account_name": "acc",
+      "database": "analytics",
+      "schema": "public",
+      "warehouse": "em.wh",
+      "client_app_id": "SnowSQL",
+      "client_app_version": "1.2.3"
+    }
+  }
+}
+```
+
+## Session Management
+
+### Session Creation
+
+Sessions are created upon successful login:
+
+1. Client sends credentials to `/session/v1/login-request`
+2. Embucket validates credentials against configured demo user/password
+3. A new session is created with a unique session_id
+4. A JWT token is generated and returned
+
+### Session Lifecycle
+
+Sessions remain active as long as:
+
+- The JWT token hasn't expired (3 days)
+- The session hasn't been explicitly deleted
+- The Embucket instance is running
+
+### Session Termination
+
+Delete a session explicitly:
+
+```bash
+curl -X POST http://localhost:3000/session?delete=true \
+  -H "Authorization: Bearer <your-jwt-token>"
+```
+
+<Info>
+Sessions are stored in-memory and are lost when Embucket restarts.
+</Info>
+
+### Query Context
+
+Each query execution carries session context:
+
+- **Database**: Active database for the query
+- **Schema**: Active schema for the query
+- **Warehouse**: Virtual warehouse identifier
+- **User**: Authenticated username
+- **Request ID**: Unique identifier for query tracking
+
+## Authorization
+
+Currently, Embucket uses a simplified authorization model:
+
+<Check>Authenticated users have full access to all databases and schemas</Check>
+<Check>No role-based access control (RBAC) - coming in future releases</Check>
+<Check>All operations are permitted once authenticated</Check>
+
+<Note>
+Role and permission management is planned for future releases. Track progress on the [Embucket GitHub repository](https://github.com/Embucket/embucket).
+</Note>
+
+## Network Security
+
+### TLS/HTTPS
+
+For production deployments, use TLS encryption:
+
+<Tabs>
+
+<Tab title="Reverse Proxy (Recommended)">
+Deploy Embucket behind a reverse proxy like Nginx or Traefik:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name embucket.example.com;
+    
+    ssl_certificate /etc/ssl/certs/embucket.crt;
+    ssl_certificate_key /etc/ssl/private/embucket.key;
+    
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+</Tab>
+
+<Tab title="Load Balancer">
+Use a load balancer with TLS termination:
+
+- AWS Application Load Balancer with ACM certificate
+- Google Cloud Load Balancer with SSL certificate
+- Azure Application Gateway with SSL certificate
+</Tab>
+
+<Tab title="API Gateway">
+Deploy through an API gateway:
+
+- AWS API Gateway with custom domain
+- Kong Gateway with TLS plugin
+- Tyk Gateway with TLS configuration
+</Tab>
+
+</Tabs>
+
+### Network Isolation
+
+Restrict network access to Embucket:
+
+<Steps>
+
+<Step title="Firewall Rules">
+Limit incoming connections to specific IP ranges or VPCs.
+</Step>
+
+<Step title="Private Networks">
+Deploy Embucket in private subnets without public IP addresses.
+</Step>
+
+<Step title="VPN/Bastion Access">
+Require VPN or bastion host access to reach Embucket.
+</Step>
+
+</Steps>
+
+### Lambda Security
+
+For AWS Lambda deployments:
+
+```bash
+# Deploy with function URL authentication
+cargo lambda deploy \
+  --binary-name bootstrap \
+  embucket-lambda \
+  --enable-function-url \
+  --iam-role arn:aws:iam::123456789012:role/embucket-lambda-role
+```
+
+Configure IAM authentication for the Lambda function URL:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::123456789012:user/allowed-user"
+      },
+      "Action": "lambda:InvokeFunctionUrl",
+      "Resource": "arn:aws:lambda:us-east-2:123456789012:function:embucket-lambda"
+    }
+  ]
+}
+```
+
+## Production Security Best Practices
+
+<CardGroup cols={2}>
+
+<Card title="Rotate Secrets" icon="rotate">
+Regularly rotate JWT secrets and demo credentials. Update all client configurations after rotation.
+</Card>
+
+<Card title="Use Strong Passwords" icon="lock">
+Set complex demo passwords with high entropy: uppercase, lowercase, numbers, and symbols.
+</Card>
+
+<Card title="Enable TLS" icon="shield-check">
+Always use HTTPS/TLS in production. Never transmit credentials over unencrypted connections.
+</Card>
+
+<Card title="Monitor Access" icon="eye">
+Log authentication attempts and query activity for security auditing.
+</Card>
+
+<Card title="Limit Exposure" icon="wall-brick">
+Deploy in private networks with restricted access. Use VPNs or bastion hosts.
+</Card>
+
+<Card title="Update Regularly" icon="arrow-up">
+Keep Embucket updated to the latest version for security patches.
+</Card>
+
+</CardGroup>
+
+### Security Checklist
+
+<Steps>
+
+<Step title="Change Default Credentials">
+```bash
+export AUTH_DEMO_USER=production_user
+export AUTH_DEMO_PASSWORD=$(openssl rand -base64 24)
+```
+</Step>
+
+<Step title="Set Strong JWT Secret">
+```bash
+export JWT_SECRET=$(openssl rand -base64 32)
+```
+</Step>
+
+<Step title="Enable TLS">
+Deploy behind a reverse proxy with valid TLS certificate.
+</Step>
+
+<Step title="Configure Firewall">
+Restrict access to known IP addresses or VPC ranges.
+</Step>
+
+<Step title="Enable Logging">
+Capture authentication and query logs for audit trails.
+</Step>
+
+<Step title="Test Security">
+Verify unauthorized access is blocked and credentials are required.
+</Step>
+
+</Steps>
+
+## Security Limitations
+
+<Warning>
+Be aware of current security limitations:
+
+- **No RBAC**: All authenticated users have full access
+- **No multi-tenancy**: Single authentication domain per instance
+- **In-memory sessions**: Sessions lost on restart
+- **No SSO**: SAML, OAuth not yet supported
+- **No audit logging**: Query auditing must be implemented externally
+</Warning>
+
+These features are on the roadmap. See the [GitHub issues](https://github.com/Embucket/embucket/issues) for status updates.
+
+## Environment-Specific Security
+
+### Development
+
+```bash
+# Development: Relaxed security is acceptable
+export AUTH_DEMO_USER=dev
+export AUTH_DEMO_PASSWORD=dev
+export JWT_SECRET=dev-secret-not-for-production
+
+# No TLS required for localhost
+./embucketd --host 127.0.0.1 --port 3000
+```
+
+### Staging
+
+```bash
+# Staging: Production-like security
+export AUTH_DEMO_USER=staging_user
+export AUTH_DEMO_PASSWORD=$(cat /run/secrets/staging_password)
+export JWT_SECRET=$(cat /run/secrets/jwt_secret)
+
+# Use TLS via reverse proxy
+# Restrict to internal network only
+./embucketd --host 0.0.0.0 --port 3000
+```
+
+### Production
+
+```bash
+# Production: Maximum security
+export AUTH_DEMO_USER=$(cat /run/secrets/production_user)
+export AUTH_DEMO_PASSWORD=$(cat /run/secrets/production_password)
+export JWT_SECRET=$(cat /run/secrets/jwt_secret)
+
+# Deploy behind TLS-terminating load balancer
+# Use private subnets
+# Enable audit logging
+# Monitor for security events
+./embucketd --host 0.0.0.0 --port 3000
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+
+<Accordion title="Authentication fails with correct credentials">
+**Solution:**
+
+1. Verify credentials match server configuration:
+   ```bash
+   echo $AUTH_DEMO_USER
+   echo $AUTH_DEMO_PASSWORD
+   ```
+2. Check JWT secret is set:
+   ```bash
+   echo $JWT_SECRET
+   ```
+3. Ensure client is sending correct Content-Type header
+4. Review server logs for authentication errors
+</Accordion>
+
+<Accordion title="JWT token expired errors">
+**Solution:**
+
+1. Tokens expire after 3 days - re-authenticate to get a new token
+2. Check system clock synchronization on client and server
+3. Use the Snowflake CLI which handles token refresh automatically
+</Accordion>
+
+<Accordion title="Invalid JWT signature">
+**Solution:**
+
+1. Verify JWT_SECRET matches on server and during token generation
+2. Don't change JWT_SECRET while sessions are active
+3. Restart Embucket and re-authenticate after changing secrets
+</Accordion>
+
+<Accordion title="Connection works locally but fails remotely">
+**Solution:**
+
+1. Ensure firewall rules allow inbound connections
+2. Verify TLS certificate is valid and trusted
+3. Check if reverse proxy is properly forwarding requests
+4. Test with curl to isolate client vs server issues:
+   ```bash
+   curl -k -X POST https://embucket.example.com/session/v1/login-request
+   ```
+</Accordion>
+
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="Deployment Guide" icon="rocket" href="/deployment/docker">
+Secure deployment patterns for production
+</Card>
+
+<Card title="Configuration" icon="gear" href="/deployment/configuration">
+Advanced configuration options
+</Card>
+
+<Card title="Monitoring" icon="chart-line" href="/operations/monitoring">
+Log authentication events and monitor security
+</Card>
+
+<Card title="API Reference" icon="code" href="/api/snowflake-rest-api">
+Programmatic authentication via REST API
+</Card>
+
+</CardGroup>
