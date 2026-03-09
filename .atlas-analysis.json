@@ -1,0 +1,133 @@
+{
+  "projectType": "data-platform",
+  "projectName": "Embucket",
+  "projectDescription": "Wire-compatible Snowflake replacement for Apache Iceberg data lakes with single binary deployment",
+  "theme": "aspen",
+  "primaryColor": "#b6ea7f",
+  "lightColor": "#748954",
+  "darkColor": "#1d1d24",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/snowflake-compatibility",
+              "concepts/iceberg-integration"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/aws-lambda",
+              "deployment/binary",
+              "deployment/configuration"
+            ]
+          },
+          {
+            "group": "Catalogs & Storage",
+            "pages": [
+              "catalogs/overview",
+              "catalogs/s3-tables",
+              "catalogs/external-iceberg",
+              "catalogs/metastore-config"
+            ]
+          },
+          {
+            "group": "Usage Guides",
+            "pages": [
+              "guides/snowflake-cli",
+              "guides/dbt-integration",
+              "guides/querying",
+              "guides/security"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/performance-tuning",
+              "operations/monitoring",
+              "operations/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "CLI",
+            "pages": [
+              "api/cli-reference",
+              "api/environment-variables"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "api/metastore-yaml",
+              "api/connection-settings"
+            ]
+          },
+          {
+            "group": "REST API",
+            "pages": [
+              "api/snowflake-rest-api",
+              "api/iceberg-catalog-api"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Community",
+        "groups": [
+          {
+            "group": "Contributing",
+            "pages": [
+              "community/contributing",
+              "community/code-of-conduct",
+              "community/development"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Snowflake SQL dialect and wire protocol compatibility",
+    "Apache Iceberg table format with ACID guarantees",
+    "Single binary deployment with zero dependencies",
+    "AWS Lambda and serverless support",
+    "External catalog connectivity (S3 Tables, custom Iceberg)",
+    "Horizontal scaling with query-per-node architecture",
+    "Built on Apache DataFusion query engine",
+    "Integration with dbt, BI tools, and Snowflake CLI"
+  ],
+  "publicApiSurface": [
+    "embucketd binary with CLI flags",
+    "--metastore-config (YAML configuration)",
+    "--host / --port (server binding)",
+    "--query-timeout-secs",
+    "--max-concurrency-level",
+    "--mem-pool-type / --mem-pool-size-mb",
+    "--sql-parser-dialect",
+    "Snowflake REST API endpoints (/api/v2/statements, /session, /queries)",
+    "Iceberg REST Catalog API (/catalog)",
+    "Health check endpoint (/health)",
+    "OpenAPI spec (/openapi.json)",
+    "Metastore YAML schema (volumes, databases, schemas, tables)",
+    "Environment variables for configuration"
+  ]
+}
